@@ -1,0 +1,41 @@
+file_generation:
+  template: |-
+    You are implementing one coding step. Generate the full resulting content for each changed file.
+
+    Objective:
+    {objective}
+
+    Target files:
+    {target_files}
+
+    Planned tests:
+    {tests}
+
+    Repository map:
+    {repo_map}
+
+    Existing file contents:
+    {file_context}
+
+    Return JSON only. For each file you output:
+    1. path: relative file path
+    2. content: full file content after applying changes
+
+    Rules:
+    1. Only return files relevant to this step.
+    2. content must be complete file contents, not a patch or snippet.
+    3. If a target file does not exist in context, create full content from scratch.
+    4. Keep output deterministic and concise.
+    5. If target files include tests, generate those test files too.
+
+    {format_instructions}
+
+  input_vars:
+    - objective
+    - target_files
+    - tests
+    - repo_map
+    - file_context
+    - format_instructions
+    
+  include_format_instructions: true

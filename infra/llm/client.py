@@ -3,10 +3,8 @@ import requests
 from typing import List, Optional
 
 from langchain_classic.llms.base import LLM
-from langchain_core.prompts import PromptTemplate
 
 from dotenv import load_dotenv
-
 load_dotenv()
 
 DEFAULT_OLLAMA_ENDPOINT = "https://anaerobic-share-blandness.ngrok-free.dev"
@@ -33,9 +31,6 @@ def resolve_ollama_model() -> str:
     if model is None:
         return DEFAULT_OLLAMA_MODEL
     return model
-
-def create_prompt(template: str, inputs: list[str]) -> PromptTemplate:
-    return PromptTemplate(template=template, input_variables=inputs)
 
 class OllamaNgrokLLM(LLM):
     endpoint: str = DEFAULT_OLLAMA_ENDPOINT

@@ -1,46 +1,19 @@
+from pathlib import Path
 from typing import Any
 
-from langchain_core.output_parsers import PydanticOutputParser
 from pydantic import BaseModel, Field
 
 from core.contracts.code import CodeOutput, CodeStep
 from core.contracts.enums import PlanStatus
 from core.contracts.plan import PlanStep
-from infra.llm.client import create_client, create_prompt
+from infra.llm.chains import invoke_chain
+from infra.llm.client import create_client
+from infra.llm.prompts import load_prompt_catalog, require_prompt
 
 client = create_client()
-
-FILE_GENERATION_PROMPT = """
-You are implementing one coding step. Generate the full resulting content for each changed file.
-
-Objective:
-{objective}
-
-Target files:
-{target_files}
-
-Planned tests:
-{tests}
-
-Repository map:
-{repo_map}
-
-Existing file contents:
-{file_context}
-
-Return JSON only. For each file you output:
-1. path: relative file path
-2. content: full file content after applying changes
-
-Rules:
-1. Only return files relevant to this step.
-2. content must be complete file contents, not a patch or snippet.
-3. If a target file does not exist in context, create full content from scratch.
-4. Keep output deterministic and concise.
-5. If target files include tests, generate those test files too.
-
-{format_instructions}
-"""
+_PROMPTS_PATH = Path(__file__).with_name("prompts.yaml")
+_PROMPTS = load_prompt_catalog(_PROMPTS_PATH)
+FILE_GENERATION_PROMPT = require_prompt(_PROMPTS, "file_generation", source=_PROMPTS_PATH)
 
 class GeneratedFile(BaseModel):
     path: str = Field(..., description="Relative path of the changed file.")
@@ -216,7 +189,6 @@ def locate_files(state: dict[str, Any]) -> dict[str, Any]:
 
     return state
 
-
 def generate_patch(state: dict[str, Any]) -> dict[str, Any]:
     code_step = _resolve_code_step(state)
 
@@ -246,22 +218,6 @@ def generate_patch(state: dict[str, Any]) -> dict[str, Any]:
             extra_notes={"objective": objective},
         )
 
-    parser = PydanticOutputParser(pydantic_object=GeneratedFilesPayload)
-
-    prompt = create_prompt(
-        FILE_GENERATION_PROMPT,
-        [
-            "objective",
-            "target_files",
-            "tests",
-            "repo_map",
-            "file_context",
-            "format_instructions",
-        ],
-    )
-
-    chain = prompt | client | parser
-
     repo_map_value = state.get("repo_map", "")
     repo_map = (
         repo_map_value
@@ -282,8 +238,11 @@ def generate_patch(state: dict[str, Any]) -> dict[str, Any]:
     )
 
     try:
-        response = chain.invoke(
-            {
+        response = invoke_chain(
+            template=FILE_GENERATION_PROMPT.template,
+            input_vars=FILE_GENERATION_PROMPT.input_vars,
+            output_model=GeneratedFilesPayload,
+            variables={
                 "objective": objective,
                 "target_files": "\n".join(target_files),
                 "tests": (
@@ -297,10 +256,9 @@ def generate_patch(state: dict[str, Any]) -> dict[str, Any]:
                     else "No repo map provided."
                 ),
                 "file_context": file_context,
-                "format_instructions": (
-                    parser.get_format_instructions()
-                ),
-            }
+            },
+            client=client,
+            include_format_instructions=FILE_GENERATION_PROMPT.include_format_instructions,
         )
 
     except Exception as exc:
