@@ -1,21 +1,23 @@
 from langgraph.graph import StateGraph, END
-from typing import TypedDict, Any, Dict, List
+from typing import TypedDict, Dict, List
 
+from core.contracts.enums import PlanStatus
 from core.contracts.code import CodeOutput
+from core.contracts.plan import PlanStep
 
 class CodeState(TypedDict):
-    step: dict[str, Any]
+    step: PlanStep
     repo_map: str
     file_contents: Dict[str, str]
     target_files: List[str]
     files: Dict[str, str]
-    status: str
+    status: PlanStatus
     notes: dict
     final_output: CodeOutput
 
 def build_code_graph(nodes) -> StateGraph[CodeState]:
     graph = StateGraph(CodeState)
-    
+
     graph.add_node("understand_task", nodes.understand_task)
     graph.add_node("locate_files", nodes.locate_files)
     graph.add_node("generate_patch", nodes.generate_patch)

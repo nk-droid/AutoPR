@@ -7,6 +7,7 @@ from core.orchestrator.steps.publish import PublishStep
 
 def steps_for_run_type(run_type: RunType) -> list[PipelineStep]:
     if run_type == RunType.ISSUE_TO_PR:
+        # Ordered pipeline from intake to PR open.
         return [
             TriageStep(),
             PlanStep(),
@@ -16,6 +17,7 @@ def steps_for_run_type(run_type: RunType) -> list[PipelineStep]:
             PROpenStep(),
         ]
     if run_type == RunType.PR_TO_MERGE:
+        # Merge pipeline assumes PR already exists.
         return [
             ReviewStep(),
             MergeStep(),

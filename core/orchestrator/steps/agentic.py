@@ -1,35 +1,39 @@
 import os
+import ray
 from typing import Any, Dict
 
-from core.contracts.enums import PipelineStage, RunState
+from core.contracts.plan import PlanStep
+from core.contracts.code import CodeOutput
+from core.contracts.enums import CheckStatus, PipelineStage, RunState
+from core.orchestrator.steps.base import PipelineStep, StepRuntime, is_success_status
+from core.contracts.run_context import CodeWorkerInput, IssueToPRContext, PlanWorkerInput, PRToMergeContext, PRWorkerInput, QAJobPayload, QAWorkerInput, ReviewWorkerInput, ToolRunResult, TriageIssueInput, TriageWorkerInput
+from core.contracts.triage import AmbiguityResult, Risk, TaskSpec, TriageResult
 from core.orchestrator.models import MergeDecision, RunModel, StageResult, StageStatus
 from core.orchestrator.transitions import can_merge_pr, can_open_pr
 
 from infra.github.client import GitHubAPIError, GitHubClient
 from infra.github.issues import get_issue_details
-from infra.ray.actors import TriageWorker, PlanWorker, CodeWorker, QAWorker, PRWorker, ReviewWorker
-
-from core.orchestrator.steps.base import PipelineStep, StepRuntime, is_success_status
+from infra.ray.actors import (
+    TriageWorker,
+    PlanWorker,
+    CodeWorker,
+    QAWorker,
+    PRWorker,
+    ReviewWorker,
+    CoverageWorker,
+    LintWorker,
+    SecurityWorker,
+    TestWorker
+)
 
 def _stage_results(context: Dict[str, Any]) -> Dict[str, StageResult]:
+    # Keep prior stage outputs in context so later steps can make policy decisions.
     value = context.get("_stage_results")
     if isinstance(value, dict):
         return value
     value = {}
     context["_stage_results"] = value
     return value
-
-def _coerce_pr_number(value: Any) -> int | None:
-    if isinstance(value, int):
-        return value
-    if isinstance(value, str):
-        candidate = value.strip()
-        if candidate.isdigit():
-            return int(candidate)
-    return None
-
-def _normalize_text(value: Any) -> str:
-    return str(value or "").strip()
 
 class TriageStep(PipelineStep):
     stage = PipelineStage.TRIAGE
@@ -43,22 +47,37 @@ class TriageStep(PipelineStep):
             repo=repo,
             token=os.environ.get("GITHUB_TOKEN"),
         )
-        return runtime.run_worker(self.stage, TriageWorker.remote(), issue)
-    
+        title = issue.get("title", "")
+        body = issue.get("body", "")
+        if not title:
+            return StageResult(
+                stage=self.stage,
+                status=StageStatus.BLOCKED,
+                notes={"reason": "Triage blocked: issue title is missing."},
+            )
+        triage_input = TriageWorkerInput(issue=TriageIssueInput(title=title, body=body))
+        return runtime.run_worker(self.stage, TriageWorker.remote(), triage_input)
+
 class PlanStep(PipelineStep):
     stage = PipelineStage.PLAN
     success_state = RunState.PLANNED.value
 
     def execute(self, context: dict[str, Any], run: RunModel, runtime: StepRuntime) -> StageResult:
-        triage_result = {
-            "status": context.get("status"),
-            "task_spec": context.get("task_spec"),
-            "risk": context.get("risk"),
-            "ambiguity": context.get("ambiguity"),
-            "questions": context.get("questions", []),
-        }
-        return runtime.run_worker(self.stage, PlanWorker.remote(), triage_result)
-    
+        try:
+            triage_result = TriageResult(
+                task_spec=TaskSpec(**context.get("task_spec", {})),
+                risk=Risk(**context.get("risk", {})),
+                ambiguity=AmbiguityResult(**context.get("ambiguity", {})),
+                questions=context.get("questions", []),
+            )
+        except Exception as exc:
+            return StageResult(
+                stage=self.stage,
+                status=StageStatus.BLOCKED,
+                notes={"reason": f"Plan blocked: invalid triage output ({exc})."},
+            )
+        return runtime.run_worker(self.stage, PlanWorker.remote(), PlanWorkerInput(triage_result=triage_result))
+
 class CodeStep(PipelineStep):
     stage = PipelineStage.CODE
     success_state = RunState.CODING.value
@@ -81,45 +100,122 @@ class CodeStep(PipelineStep):
         if step_index < 0 or step_index >= len(steps):
             step_index = 0
 
-        selected_step = steps[step_index]
+        selected_step_raw = steps[step_index]
+        try:
+            selected_step = PlanStep(**selected_step_raw)
+        except Exception as exc:
+            return StageResult(
+                stage=self.stage,
+                status=StageStatus.BLOCKED,
+                outputs={"files_map": {}, "tests_map": {}},
+                notes={"reason": f"Invalid plan step for coding ({exc})."},
+            )
         repo_map = context.get("repo_map", "")
         file_contents = context.get("file_contents", {})
         if not isinstance(repo_map, str):
-            repo_map = str(repo_map)
+            repo_map = ""
         if not isinstance(file_contents, dict):
             file_contents = {}
+        typed_file_contents: dict[str, str] = {}
+        for path, content in file_contents.items():
+            if not isinstance(path, str) or not isinstance(content, str):
+                continue
+            typed_file_contents[path] = content
 
         coding_result = runtime.run_worker(
             self.stage,
             CodeWorker.remote(),
-            selected_step,
-            repo_map,
-            file_contents,
+            CodeWorkerInput(
+                step=selected_step,
+                repo_map=repo_map,
+                file_contents=typed_file_contents,
+            ),
         )
         code_output = coding_result.outputs if isinstance(coding_result.outputs, dict) else {}
+        try:
+            normalized_code_output = CodeOutput(**code_output).model_dump()
+        except Exception:
+            normalized_code_output = code_output
         return StageResult(
             stage=self.stage,
             status=coding_result.status,
             outputs={
                 "coding_step_index": step_index,
-                "coding_step": selected_step,
-                "coding_output": code_output,
+                "coding_step": selected_step.model_dump(),
+                "coding_output": normalized_code_output,
             },
         )
-    
+
 class QAStep(PipelineStep):
     stage = PipelineStage.QA
     success_state = RunState.QA_RUNNING.value
 
     def execute(self, context: dict[str, Any], run: RunModel, runtime: StepRuntime) -> StageResult:
-        coding_output = context.get("coding_output", {})
-        coding_step = context.get("coding_step", {})
-        if not isinstance(coding_output, dict):
-            coding_output = {}
-        if not isinstance(coding_step, dict):
-            coding_step = {}
-        return runtime.run_worker(self.stage, QAWorker.remote(), coding_output, coding_step)
-    
+        try:
+            coding_output = CodeOutput(**context.get("coding_output", {}))
+            coding_step = PlanStep(**context.get("coding_step", {}))
+        except Exception as exc:
+            return StageResult(
+                stage=self.stage,
+                status=StageStatus.BLOCKED,
+                notes={"reason": f"QA blocked: invalid coding payload ({exc})."},
+            )
+
+        timeout_raw = context.get("qa_timeout_sec", 900)
+        timeout_sec = timeout_raw if isinstance(timeout_raw, int) and timeout_raw > 0 else 900
+        coverage_raw = context.get("coverage_threshold", 80.0)
+        if isinstance(coverage_raw, float):
+            coverage_threshold = coverage_raw
+        elif isinstance(coverage_raw, int):
+            coverage_threshold = float(coverage_raw)
+        else:
+            coverage_threshold = 80.0
+        repo_path = context.get("repo_path") or context.get("local_repo_path")
+        qa_payload = QAJobPayload(
+            coding_output=coding_output,
+            coding_step=coding_step,
+            repo_path=repo_path,
+            qa_timeout_sec=timeout_sec,
+            coverage_threshold=coverage_threshold,
+        )
+        lint_ref = LintWorker.remote().run.remote(qa_payload)
+        test_ref = TestWorker.remote().run.remote(qa_payload)
+        coverage_ref = CoverageWorker.remote().run.remote(qa_payload)
+        security_ref = SecurityWorker.remote().run.remote(qa_payload)
+        refs = [lint_ref, test_ref, coverage_ref, security_ref]
+        # Run QA tools in parallel, then cancel stragglers after timeout.
+        _, pending = ray.wait(
+            refs,
+            num_returns=len(refs),
+            timeout=qa_payload.qa_timeout_sec + 30,
+        )
+
+        def _get_result_from_ref(name: str, pending: Any, ref: Any) -> ToolRunResult:
+            if ref not in pending:
+                return ray.get(ref)
+
+            return ToolRunResult(
+                name=name,
+                status=CheckStatus.FAIL,
+                payload={"reason": "timeout_or_cancelled"}
+            )
+
+        lint_result = _get_result_from_ref("lint", pending, lint_ref)
+        tests_result = _get_result_from_ref("tests", pending, test_ref)
+        coverage_result = _get_result_from_ref("coverage", pending, coverage_ref)
+        security_result = _get_result_from_ref("security", pending, security_ref)
+
+        tool_results = [lint_result, tests_result, coverage_result, security_result]
+        for ref in pending:
+            ray.cancel(ref, force=True)
+
+        qa_worker_input = QAWorkerInput(
+            coding_output=coding_output,
+            coding_step=coding_step,
+            tool_results=tool_results,
+        )
+        return runtime.run_worker(self.stage, QAWorker.remote(), qa_worker_input)
+
 class PROpenStep(PipelineStep):
     stage = PipelineStage.PR_OPEN
     success_state = RunState.PR_OPENED.value
@@ -127,6 +223,7 @@ class PROpenStep(PipelineStep):
     def execute(self, context: dict[str, Any], run: RunModel, runtime: StepRuntime) -> StageResult:
         results = _stage_results(context)
         qa_result = results.get(PipelineStage.QA.value) or results.get(PipelineStage.QA)
+        # PR creation is hard-gated on QA policy output.
         decision = can_open_pr(qa_result)
         if not decision.allowed:
             return StageResult(
@@ -134,8 +231,31 @@ class PROpenStep(PipelineStep):
                 status=StageStatus.BLOCKED,
                 notes={"reason": decision.reason, "blocking_reasons": decision.blocking_reasons},
             )
-        return runtime.run_worker(self.stage, PRWorker.remote(), context)
-    
+        issue_number = context.get("issue_number")
+        if not isinstance(issue_number, int):
+            issue_number = run.issue_number
+        if not isinstance(issue_number, int):
+            return StageResult(
+                stage=self.stage,
+                status=StageStatus.BLOCKED,
+                notes={"reason": "PR open blocked: issue_number missing."},
+            )
+        payload = dict(context)
+        payload.setdefault("repository", context.get("repository") or run.repository)
+        payload.setdefault("issue_number", issue_number)
+        payload.setdefault("execute_remote_actions", bool(context.get("execute_remote_actions", False)))
+        head_branch_value = context.get("head_branch") or context.get("pr_head")
+        if not isinstance(head_branch_value, str) or not head_branch_value:
+            head_branch_value = f"autopr/issue-{issue_number}"
+        payload.setdefault("head_branch", head_branch_value)
+        base_branch_value = context.get("base_branch") or context.get("pr_base")
+        if not isinstance(base_branch_value, str) or not base_branch_value:
+            base_branch_value = "main"
+        payload.setdefault("base_branch", base_branch_value)
+        payload.setdefault("metadata", context.get("metadata") if isinstance(context.get("metadata"), dict) else dict(run.metadata))
+        pr_context = IssueToPRContext(**payload)
+        return runtime.run_worker(self.stage, PRWorker.remote(), PRWorkerInput(context=pr_context))
+
 class ReviewStep(PipelineStep):
     stage = PipelineStage.REVIEW
 
@@ -145,10 +265,10 @@ class ReviewStep(PipelineStep):
         return []
 
     def execute(self, context: dict[str, Any], run: RunModel, runtime: StepRuntime) -> StageResult:
-        repository = _normalize_text(context.get("repository")) or _normalize_text(run.repository)
-        pull_request_number = _coerce_pr_number(context.get("pull_request_number"))
+        repository = context.get("repository") or run.repository
+        pull_request_number = context.get("pull_request_number")
         if pull_request_number is None:
-            pull_request_number = _coerce_pr_number(run.pull_request_number)
+            pull_request_number = run.pull_request_number
 
         if not repository or pull_request_number is None:
             return StageResult(
@@ -185,19 +305,22 @@ class ReviewStep(PipelineStep):
         finally:
             client.close()
 
-        context["pull_request_url"] = _normalize_text(pull_request.get("html_url")) or _normalize_text(
-            context.get("pull_request_url")
-        )
-        context["pull_request_state"] = _normalize_text(pull_request.get("state")).lower()
+        # Refresh PR metadata from GitHub so review logic uses canonical state.
+        context["pull_request_url"] = pull_request.get("html_url") or context.get("pull_request_url")
+        context["pull_request_state"] = pull_request.get("state")
         context["pull_request_draft"] = bool(pull_request.get("draft", False))
         mergeable = pull_request.get("mergeable")
         if mergeable is None or isinstance(mergeable, bool):
             context["pull_request_mergeable"] = mergeable
-        context["pull_request_mergeable_state"] = _normalize_text(
-            pull_request.get("mergeable_state")
-        ).lower()
-
-        return runtime.run_worker(self.stage, ReviewWorker.remote(), context)
+        context["pull_request_mergeable_state"] = pull_request.get("mergeable_state")
+        payload = dict(context)
+        payload.setdefault("repository", repository)
+        payload.setdefault("pull_request_number", pull_request_number)
+        payload.setdefault("review_approved", bool(context.get("review_approved", False)))
+        payload.setdefault("execute_remote_actions", bool(context.get("execute_remote_actions", False)))
+        payload.setdefault("metadata", context.get("metadata") if isinstance(context.get("metadata"), dict) else dict(run.metadata))
+        review_context = PRToMergeContext(**payload)
+        return runtime.run_worker(self.stage, ReviewWorker.remote(), ReviewWorkerInput(context=review_context))
 
     def after(
         self,

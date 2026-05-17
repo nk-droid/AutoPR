@@ -1,7 +1,11 @@
-from typing import Any, Dict, Literal
-from pydantic import BaseModel, Field
+from typing import Any
+
 from langchain_core.output_parsers import PydanticOutputParser
+from pydantic import BaseModel, Field
+
+from core.contracts.enums import PlanStatus, RiskLevel
 from core.contracts.plan import PlanOutput, PlanStep
+from core.contracts.triage import TriageResult
 from infra.llm.client import create_client, create_prompt
 
 client = create_client()
@@ -91,10 +95,10 @@ class DraftPlanStepModel(BaseModel):
     files: list[str] = Field(default_factory=list)
     tests: list[str] = Field(default_factory=list)
     acceptance_criteria: list[str] = Field(default_factory=list)
-    risk_level: Literal["low", "medium", "high"] = "low"
+    risk_level: RiskLevel = RiskLevel.LOW
 
 class DraftPlanModel(BaseModel):
-    status: Literal["ok", "needs_review", "blocked"] = "ok"
+    status: PlanStatus = PlanStatus.OK
     strategy: str
     assumptions: list[str] = Field(default_factory=list)
     open_questions: list[str] = Field(default_factory=list)
@@ -108,105 +112,124 @@ class DependencyMapModel(BaseModel):
     steps: list[DependencyItem] = Field(default_factory=list)
 
 class PlanAmbiguityModel(BaseModel):
-    status: Literal["ok", "needs_review", "blocked"] = "ok"
+    status: PlanStatus = PlanStatus.OK
     open_questions: list[str] = Field(default_factory=list)
 
-def _normalize_text_list(values: Any) -> list[str]:
+def _as_triage_result(value: Any) -> TriageResult:
+    if isinstance(value, TriageResult):
+        return value
+    return TriageResult.model_validate(value)
+
+def _as_plan_steps(values: Any) -> list[PlanStep]:
     if not isinstance(values, list):
         return []
-    normalized: list[str] = []
-    for value in values:
-        if not isinstance(value, str):
-            continue
-        item = value.strip()
-        if not item:
-            continue
-        normalized.append(item)
-    return normalized
+    return [item if isinstance(item, PlanStep) else PlanStep.model_validate(item) for item in values]
 
-def draft_plan(state: Dict[str, Any]) -> Dict[str, Any]:
+def draft_plan(state: dict[str, Any]) -> dict[str, Any]:
     parser = PydanticOutputParser(pydantic_object=DraftPlanModel)
     prompt = create_prompt(PLAN_DRAFT_PROMPT, ["triage_result"])
     chain = prompt | client | parser
-    triage_result = state.get("triage_result", {})
-    response = chain.invoke({"triage_result": triage_result})
-    payload = response.model_dump()
-    state["status"] = payload.get("status", "ok")
-    state["strategy"] = payload.get("strategy", "")
-    state["assumptions"] = _normalize_text_list(payload.get("assumptions", []))
-    state["open_questions"] = _normalize_text_list(payload.get("open_questions", []))
-    state["steps"] = [step.model_dump() for step in response.steps]
+
+    triage_result = _as_triage_result(state.get("triage_result"))
+    response = chain.invoke({"triage_result": triage_result.model_dump(mode="json")})
+
+    state["status"] = response.status
+    state["strategy"] = response.strategy
+    state["assumptions"] = response.assumptions
+    state["open_questions"] = response.open_questions
+    state["steps"] = [
+        PlanStep(
+            title=step.title,
+            objective=step.objective,
+            rationale=step.rationale,
+            files=step.files,
+            tests=step.tests,
+            acceptance_criteria=step.acceptance_criteria,
+            risk_level=step.risk_level,
+        )
+        for step in response.steps
+    ]
+
     return state
 
-def map_dependencies(state: Dict[str, Any]) -> Dict[str, Any]:
+def map_dependencies(state: dict[str, Any]) -> dict[str, Any]:
     parser = PydanticOutputParser(pydantic_object=DependencyMapModel)
     prompt = create_prompt(DEPENDENCY_MAPPING_PROMPT, ["steps"])
     chain = prompt | client | parser
-    response = chain.invoke({"steps": state.get("steps", [])})
-    dependency_map = {
-        item.title: _normalize_text_list(item.depends_on_titles) for item in response.steps
+
+    plan_steps = _as_plan_steps(state.get("steps"))
+    response = chain.invoke({"steps": [step.model_dump(mode="json") for step in plan_steps]})
+
+    dependency_titles_by_step_title = {
+        item.title: item.depends_on_titles
+        for item in response.steps
     }
-    enriched_steps: list[dict[str, Any]] = []
-    for step in state.get("steps", []):
-        step_title = str(step.get("title", ""))
-        enriched = dict(step)
-        enriched["depends_on_titles"] = dependency_map.get(step_title, [])
-        enriched_steps.append(enriched)
-    state["steps"] = enriched_steps
+
+    step_id_by_title = {step.title: step.id for step in plan_steps}
+    state["steps"] = [
+        step.model_copy(
+            update={
+                "dependencies": [
+                    step_id_by_title[dep_title]
+                    for dep_title in dependency_titles_by_step_title.get(step.title, [])
+                    if dep_title in step_id_by_title
+                ]
+            }
+        )
+        for step in plan_steps
+    ]
+
     return state
 
-def detect_ambiguity(state: Dict[str, Any]) -> Dict[str, Any]:
+def detect_ambiguity(state: dict[str, Any]) -> dict[str, Any]:
     parser = PydanticOutputParser(pydantic_object=PlanAmbiguityModel)
     prompt = create_prompt(PLAN_AMBIGUITY_PROMPT, ["plan"])
     chain = prompt | client | parser
+
+    plan_steps = _as_plan_steps(state.get("steps"))
+    current_status = state.get("status", PlanStatus.OK)
+
+    if not isinstance(current_status, PlanStatus):
+        current_status = PlanStatus.OK
+
     response = chain.invoke(
         {
             "plan": {
                 "strategy": state.get("strategy", ""),
-                "status": state.get("status", "ok"),
+                "status": current_status.value,
                 "assumptions": state.get("assumptions", []),
                 "open_questions": state.get("open_questions", []),
-                "steps": state.get("steps", []),
+                "steps": [step.model_dump(mode="json") for step in plan_steps],
             }
         }
     )
-    payload = response.model_dump()
-    new_status = payload.get("status", state.get("status", "ok"))
-    state["status"] = new_status
-    current_questions = _normalize_text_list(state.get("open_questions", []))
-    detected_questions = _normalize_text_list(payload.get("open_questions", []))
-    merged_questions = current_questions + [q for q in detected_questions if q not in current_questions]
+
+    state["status"] = response.status
+
+    current_questions = state.get("open_questions", [])
+    if not isinstance(current_questions, list):
+        current_questions = []
+
+    merged_questions = list(current_questions)
+    for question in response.open_questions:
+        if question not in merged_questions:
+            merged_questions.append(question)
+
     state["open_questions"] = merged_questions
+    
     return state
 
-def finalize(state: Dict[str, Any]) -> Dict[str, Any]:
-    step_id_by_title: dict[str, Any] = {}
-    plan_steps: list[PlanStep] = []
-    for step in state.get("steps", []):
-        plan_step = PlanStep(
-            title=str(step.get("title", "")).strip() or "Untitled Step",
-            objective=str(step.get("objective", "")).strip() or "No objective provided",
-            rationale=str(step.get("rationale", "")).strip(),
-            files=_normalize_text_list(step.get("files", [])),
-            tests=_normalize_text_list(step.get("tests", [])),
-            acceptance_criteria=_normalize_text_list(step.get("acceptance_criteria", [])),
-            risk_level=step.get("risk_level", "low"),
-        )
-        plan_steps.append(plan_step)
-        step_id_by_title[plan_step.title] = plan_step.id
-
-    for index, step in enumerate(plan_steps):
-        raw_dep_titles = state.get("steps", [])[index].get("depends_on_titles", [])
-        dep_titles = _normalize_text_list(raw_dep_titles)
-        plan_steps[index].dependencies = [
-            step_id_by_title[dep_title] for dep_title in dep_titles if dep_title in step_id_by_title
-        ]
-
+def finalize(state: dict[str, Any]) -> dict[str, Any]:
+    plan_steps = _as_plan_steps(state.get("steps"))
+    assumptions = state.get("assumptions", [])
+    open_questions = state.get("open_questions", [])
+    
     result = PlanOutput(
-        strategy=str(state.get("strategy", "")).strip(),
+        strategy=state.get("strategy", ""),
         steps=plan_steps,
-        assumptions=_normalize_text_list(state.get("assumptions", [])),
-        open_questions=_normalize_text_list(state.get("open_questions", [])),
+        assumptions=assumptions if isinstance(assumptions, list) else [],
+        open_questions=open_questions if isinstance(open_questions, list) else [],
     )
-    state["final_output"] = result.model_dump()
+
+    state["final_output"] = result.model_dump(mode="json")
     return state

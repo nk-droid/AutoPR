@@ -1,15 +1,16 @@
+import ray
 from typing import Any
 
-import ray
-
 from core.contracts.enums import PipelineStage, RunState
-from core.orchestrator.models import RunModel, RunType, StageResult, StageStatus
+from core.contracts.run_context import IssueToPRContext, PRToMergeContext
+from core.orchestrator.models import RunModel, RunType, StageResult
 from core.orchestrator.state_machine import StateMachine
 from core.orchestrator.steps.base import is_success_status
 from core.orchestrator.steps.registry import steps_for_run_type
 from infra.storage.artifacts import record_run_event, save_artifact, upsert_run
 
 import dotenv
+
 dotenv.load_dotenv()
 
 class Coordinator:
@@ -25,6 +26,7 @@ class Coordinator:
         run_id = str(self.run.run_id)
         run_type = self.run.run_type.value if hasattr(self.run.run_type, "value") else str(self.run.run_type)
         run_payload = self.run.model_dump(mode="json")
+        # Persist the latest run snapshot on every state or stage mutation.
         upsert_run(
             run_id=run_id,
             state=self.run.state,
@@ -32,6 +34,7 @@ class Coordinator:
             payload=run_payload,
         )
         if event_type:
+            # Event log stays append-only so run timelines remain auditable.
             record_run_event(run_id, event_type, payload or {})
 
     def run_once(self, *, decision: str | None = None, reason: str = "") -> str:
@@ -89,43 +92,17 @@ class Coordinator:
         )
         return result
 
-    @staticmethod
-    def _coerce_int(value: Any) -> int | None:
-        if isinstance(value, int):
-            return value
-        if isinstance(value, str):
-            candidate = value.strip()
-            if candidate.isdigit():
-                return int(candidate)
-        return None
-
     def _seed_context_from_run(self, context: dict[str, Any]) -> None:
-        if not isinstance(context.get("repository"), str) or not str(context.get("repository", "")).strip():
-            if self.run.repository:
-                context["repository"] = self.run.repository
-        if context.get("issue_number") is None and self.run.issue_number is not None:
-            context["issue_number"] = self.run.issue_number
-        if context.get("pull_request_number") is None and self.run.pull_request_number is not None:
-            context["pull_request_number"] = self.run.pull_request_number
-        if "metadata" not in context and isinstance(self.run.metadata, dict):
-            context["metadata"] = dict(self.run.metadata)
+        context["repository"] = context.get("repository") or self.run.repository
+        context["issue_number"] = context.get("issue_number") or self.run.issue_number
+        context["pull_request_number"] = context.get("pull_request_number") or self.run.pull_request_number
+        context["metadata"] = context.get("metadata") or self.run.metadata
 
     def _sync_run_from_context(self, context: dict[str, Any]) -> None:
-        repository = str(context.get("repository", "")).strip()
-        if repository:
-            self.run.repository = repository
-
-        issue_number = self._coerce_int(context.get("issue_number"))
-        if issue_number is not None:
-            self.run.issue_number = issue_number
-
-        pull_request_number = self._coerce_int(context.get("pull_request_number"))
-        if pull_request_number is not None:
-            self.run.pull_request_number = pull_request_number
-
-        metadata = context.get("metadata")
-        if isinstance(metadata, dict):
-            self.run.metadata = dict(metadata)
+        self.run.repository = context.get("repository")
+        self.run.issue_number = context.get("issue_number")
+        self.run.pull_request_number = context.get("pull_request_number")
+        self.run.metadata = context.get("metadata")
 
     def run_worker(self, stage: PipelineStage, worker: Any, *args: Any) -> StageResult:
         worker_result_ref = worker.run.remote(*args)
@@ -146,6 +123,7 @@ class Coordinator:
             stage_results = {}
             context["_stage_results"] = stage_results
 
+        # Steps can drive state transitions via before/after hooks around execution.
         for step in steps_for_run_type(self.run.run_type):
             for next_state, reason in step.before(context, self.run):
                 self.transition_to(next_state, reason=reason)
@@ -165,14 +143,14 @@ class Coordinator:
 
         return self.run
 
-    def run_issue_to_pr(self, context: dict[str, Any]) -> RunModel:
+    def run_issue_to_pr(self, context: IssueToPRContext) -> RunModel:
         self.set_run_type(RunType.ISSUE_TO_PR)
-        return self._run_steps(context)
+        return self._run_steps(context.model_dump(mode="json"))
 
-    def run_pr_to_merge(self, context: dict[str, Any]) -> RunModel:
+    def run_pr_to_merge(self, context: PRToMergeContext) -> RunModel:
         self.set_run_type(RunType.PR_TO_MERGE)
-        return self._run_steps(context)
-    
+        return self._run_steps(context.model_dump(mode="json"))
+
 if __name__ == "__main__":
     import json
     import time
@@ -201,7 +179,7 @@ if __name__ == "__main__":
         "execute_remote_actions": True,    # needed to actually open PR via API
     }
     coordinator = Coordinator(run_model)
-    issue_to_pr_run = coordinator.run_issue_to_pr(context=context)
+    issue_to_pr_run = coordinator.run_issue_to_pr(context=IssueToPRContext(**context))
 
     raw_pr_number = context.get("pull_request_number")
     if isinstance(raw_pr_number, int):
@@ -215,7 +193,7 @@ if __name__ == "__main__":
     if issue_to_pr_run.state == RunState.PR_OPENED.value and created_pr_number is not None:
         context["pull_request_number"] = created_pr_number
         context["review_approved"] = True  # demo mode: allow merge workflow to proceed.
-        final_run = coordinator.run_pr_to_merge(context=context)
+        final_run = coordinator.run_pr_to_merge(context=PRToMergeContext(**context))
     else:
         print("Skipping PR-to-merge workflow: PR was not opened in issue-to-PR run.")
 

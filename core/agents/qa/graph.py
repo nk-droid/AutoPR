@@ -1,15 +1,20 @@
 from typing import Any, TypedDict
 from langgraph.graph import END, StateGraph
-from core.contracts.qa import QAOutput
+from core.contracts.code import CodeOutput
+from core.contracts.plan import PlanStep
+from core.contracts.qa import QACheck
+from core.contracts.run_context import ToolRunResult
+from core.orchestrator.models import StageStatus
 
 class QAState(TypedDict):
-    coding_output: dict[str, Any]
-    coding_step: dict[str, Any]
-    status: str
+    coding_output: CodeOutput
+    coding_step: PlanStep
+    tool_results: list[ToolRunResult]
+    status: StageStatus
     summary: str
-    checks: list[dict[str, Any]]
+    checks: list[QACheck]
     notes: dict[str, Any]
-    final_output: QAOutput
+    final_output: dict[str, Any]
 
 def build_qa_graph(nodes) -> StateGraph[QAState]:
     graph = StateGraph(QAState)

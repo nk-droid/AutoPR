@@ -1,6 +1,8 @@
-from typing import Dict, Any
-from langchain_core.prompts import PromptTemplate
+from typing import Any
 
+from langchain_core.output_parsers import PydanticOutputParser
+
+from core.contracts.run_context import TriageIssueInput
 from core.contracts.triage import TaskSpec, Risk, AmbiguityResult, TriageResult
 from infra.llm.client import create_client, create_prompt
 
@@ -8,7 +10,7 @@ client = create_client()
 
 TASK_EXTRACTION_PROMPT = """
 You are a task extraction agent responsible for analyzing a given issue and extracting a clear and concise task specification.
-Given an issue with its title and body, you will analyze the content to identify the problem statement, acceptance criteria, 
+Given an issue with its title and body, you will analyze the content to identify the problem statement, acceptance criteria,
 constraints, and out-of-scope items to create a well-defined task specification.
 
 Here is the issue you need to evaluate:
@@ -85,98 +87,95 @@ Rules:
 3. If status="ok", prefer questions=[].
 """
 
-def _normalize_questions(raw_questions: Any) -> list[str]:
-    if not isinstance(raw_questions, list):
-        return []
-    cleaned: list[str] = []
-    for item in raw_questions:
-        if not isinstance(item, str):
-            continue
-        value = item.strip()
-        if not value:
-            continue
-        if value.lower() in {"none", "n/a", "na", "null", "nil", "no questions", "no question"}:
-            continue
-        cleaned.append(value)
-    return cleaned
-
-def _coerce_ambiguity_status(raw_status: Any, questions: list[str]) -> str:
-    status = str(raw_status).strip().lower()
-    if status not in {"ok", "needs_human"}:
-        status = "ok"
-    if status == "needs_human" and not questions:
-        return "ok"
-    return status
-
-def extract_task(state: Dict[str, Any]) -> TaskSpec:
-    from langchain_core.output_parsers import PydanticOutputParser
+def extract_task(state: dict[str, Any]) -> dict[str, Any]:
     parser = PydanticOutputParser(pydantic_object=TaskSpec)
     prompt = create_prompt(TASK_EXTRACTION_PROMPT, ["issue"])
     chain = prompt | client | parser
-    issue = f"{state['issue']['title']}\n{state['issue']['body']}"
+
+    issue_value = state.get("issue")
+    if isinstance(issue_value, TriageIssueInput):
+        issue = issue_value
+    else:
+        issue = TriageIssueInput.model_validate(issue_value)
+
     response = chain.invoke({
-       "issue": issue
+        "issue": f"{issue.title}\n{issue.body}",
     })
-    
-    state["task_spec"] = response.model_dump()
+
+    state["task_spec"] = response
+
     return state
 
-def assess_risk(state: Dict[str, Any]) -> Risk:
-    from langchain_core.output_parsers import PydanticOutputParser
+def assess_risk(state: dict[str, Any]) -> dict[str, Any]:
     parser = PydanticOutputParser(pydantic_object=Risk)
     prompt = create_prompt(RISK_ASSESSMENT_PROMPT, ["task_spec"])
     chain = prompt | client | parser
-    task_spec = f"""
-Problem: {state['task_spec']['problem']}
-Acceptance Criteria: {', '.join(state['task_spec']['acceptance_criteria'])}
-Constraints: {', '.join(state['task_spec']['constraints'])}
-Out of Scope: {', '.join(state['task_spec']['out_of_scope'])}
-    """
-    response = chain.invoke({
-       "task_spec": task_spec
-    })
+
+    task_spec_value = state.get("task_spec")
+    task_spec = task_spec_value if isinstance(task_spec_value, TaskSpec) else TaskSpec.model_validate(task_spec_value)
+    response = chain.invoke(
+        {
+            "task_spec": (
+                f"Problem: {task_spec.problem}\n"
+                f"Acceptance Criteria: {', '.join(task_spec.acceptance_criteria)}\n"
+                f"Constraints: {', '.join(task_spec.constraints)}\n"
+                f"Out of Scope: {', '.join(task_spec.out_of_scope)}"
+            )
+        }
+    )
+
+    state["risk"] = response
     
-    state["risk"] = response.model_dump()
     return state
 
-def detect_ambiguity(state: Dict[str, Any]) -> AmbiguityResult:
-    from langchain_core.output_parsers import PydanticOutputParser
+def detect_ambiguity(state: dict[str, Any]) -> dict[str, Any]:
     parser = PydanticOutputParser(pydantic_object=AmbiguityResult)
     prompt = create_prompt(AMBIGUITY_DETECTION_PROMPT, ["task_spec", "risk"])
     chain = prompt | client | parser
-    task_spec = f"""Problem: {state['task_spec']['problem']}
-Acceptance Criteria: {', '.join(state['task_spec']['acceptance_criteria'])}
-Constraints: {', '.join(state['task_spec']['constraints'])}
-Out of Scope: {', '.join(state['task_spec']['out_of_scope'])}
-"""
-    risk = f"""Level: {state['risk']['level']}
-Reasons: {', '.join(state['risk']['reasons'])}
-"""
 
-    response = chain.invoke({
-       "task_spec": task_spec,
-       "risk": risk
-    })
-    payload = response.model_dump()
-    questions = _normalize_questions(payload.get("questions", []))
-    status = _coerce_ambiguity_status(payload.get("status", "ok"), questions)
-    state["questions"] = questions
-    state["status"] = status
-    return state
-
-def finalize(state: Dict[str, Any]) -> TriageResult:
-    ambiguity_status = state.get("status", "ok")
-    questions = state.get("questions", [])
-    triage_status = "accepted"
-    if ambiguity_status == "needs_review" and questions:
-        triage_status = "needs_review"
-
-    result = TriageResult(
-        task_spec=TaskSpec(**state["task_spec"]),
-        risk=Risk(**state["risk"]),
-        ambiguity=AmbiguityResult(status=ambiguity_status, questions=questions),
-        questions=questions
+    task_spec_value = state.get("task_spec")
+    risk_value = state.get("risk")
+    task_spec = task_spec_value if isinstance(task_spec_value, TaskSpec) else TaskSpec.model_validate(task_spec_value)
+    risk = risk_value if isinstance(risk_value, Risk) else Risk.model_validate(risk_value)
+    response = chain.invoke(
+        {
+            "task_spec": (
+                f"Problem: {task_spec.problem}\n"
+                f"Acceptance Criteria: {', '.join(task_spec.acceptance_criteria)}\n"
+                f"Constraints: {', '.join(task_spec.constraints)}\n"
+                f"Out of Scope: {', '.join(task_spec.out_of_scope)}"
+            ),
+            "risk": (
+                f"Level: {risk.level.value}\n"
+                f"Reasons: {', '.join(risk.reasons)}"
+            ),
+        }
     )
 
-    state["final_output"] = result.model_dump()
+    state["ambiguity"] = response
+    state["status"] = response.status
+
+    return state
+
+def finalize(state: dict[str, Any]) -> dict[str, Any]:
+    task_spec_value = state.get("task_spec")
+    risk_value = state.get("risk")
+    ambiguity_value = state.get("ambiguity")
+
+    task_spec = task_spec_value if isinstance(task_spec_value, TaskSpec) else TaskSpec.model_validate(task_spec_value)
+    risk = risk_value if isinstance(risk_value, Risk) else Risk.model_validate(risk_value)
+    ambiguity = (
+        ambiguity_value if isinstance(ambiguity_value, AmbiguityResult) else AmbiguityResult.model_validate(ambiguity_value)
+    )
+
+    result = TriageResult(
+        task_spec=task_spec,
+        risk=risk,
+        ambiguity=ambiguity,
+        questions=list(ambiguity.questions),
+    )
+
+    state["status"] = ambiguity.status
+    state["final_output"] = result.model_dump(mode="json")
+    
     return state

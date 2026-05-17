@@ -1,175 +1,153 @@
 from typing import Any
-from core.contracts.review import ReviewCheck, ReviewOutput
 
-def _to_optional_bool(value: Any) -> bool | None:
-    if isinstance(value, bool):
-        return value
+from core.contracts.enums import CheckStatus, GitHubMergeableState, GitHubPullRequestState
+from core.contracts.review import ReviewCheck, ReviewOutput
+from core.contracts.run_context import PRToMergeContext
+from core.orchestrator.models import StageStatus
+
+def _normalized_status(value: Any) -> str:
+    if isinstance(value, StageStatus):
+        return value.value
+    if isinstance(value, CheckStatus):
+        return value.value
     if isinstance(value, str):
-        normalized = value.strip().lower()
-        if normalized in {"true", "1", "yes", "y"}:
-            return True
-        if normalized in {"false", "0", "no", "n"}:
-            return False
-    return None
+        return value.strip().lower()
+    return ""
 
 def evaluate_review(state: dict[str, Any]) -> dict[str, Any]:
-    context = state.get("context", {})
-    if not isinstance(context, dict):
-        state["status"] = "blocked"
+    context = state.get("context")
+    if not isinstance(context, PRToMergeContext):
+        state["status"] = StageStatus.BLOCKED
         state["summary"] = "Review blocked: invalid context payload."
         state["required_actions"] = ["Provide valid review context."]
         state["notes"] = {"blocking_reason": "invalid_context"}
         return state
 
-    qa_output = context.get("qa_output", {})
+    payload = context.model_dump(mode="json")
+    qa_output = payload.get("qa_output", {})
     qa_status = ""
     if isinstance(qa_output, dict):
-        qa_status = str(qa_output.get("status") or qa_output.get("qa_status") or "").strip().lower()
+        qa_status = _normalized_status(qa_output.get("status") or qa_output.get("qa_status"))
     if not qa_status:
-        qa_status = str(context.get("qa_status", "")).strip().lower()
+        qa_status = _normalized_status(payload.get("qa_status"))
 
-    pr_number = context.get("pull_request_number")
-    pr_url = str(context.get("pull_request_url", "")).strip()
-    pr_state = str(context.get("pull_request_state", "")).strip().lower()
-    pr_draft = bool(context.get("pull_request_draft", False))
-    pr_mergeable = context.get("pull_request_mergeable")
-    pr_mergeable_state = str(context.get("pull_request_mergeable_state", "")).strip().lower()
-    review_approved = _to_optional_bool(context.get("review_approved")) is True
-
-    qa_check_status = "warn"
+    qa_check_status = CheckStatus.WARN
     qa_check_details = "qa status unavailable"
-    if qa_status == "ok":
-        qa_check_status = "pass"
+    if qa_status == StageStatus.OK.value:
+        qa_check_status = CheckStatus.PASS
         qa_check_details = "qa_output.status=ok"
-    elif qa_status in {"blocked", "failed", "fail", "error"}:
-        qa_check_status = "fail"
+    elif qa_status in {StageStatus.BLOCKED.value, StageStatus.FAILED.value, CheckStatus.FAIL.value, "failed", "error"}:
+        qa_check_status = CheckStatus.FAIL
         qa_check_details = f"qa_output.status={qa_status}"
-    elif isinstance(pr_mergeable, bool):
-        qa_check_status = "pass" if pr_mergeable else "fail"
-        qa_check_details = f"derived_from_pull_request.mergeable={pr_mergeable}"
-    elif pr_mergeable_state in {"clean", "has_hooks", "unstable"}:
-        qa_check_status = "pass"
-        qa_check_details = f"derived_from_pull_request.mergeable_state={pr_mergeable_state}"
-    elif pr_mergeable_state in {"dirty", "blocked", "behind", "draft"}:
-        qa_check_status = "fail"
-        qa_check_details = f"derived_from_pull_request.mergeable_state={pr_mergeable_state}"
-    elif pr_mergeable_state:
-        qa_check_status = "warn"
-        qa_check_details = f"pull_request.mergeable_state={pr_mergeable_state}"
+    elif isinstance(payload.get("pull_request_mergeable"), bool):
+        # Fall back to live PR mergeability when qa_output is missing/incomplete.
+        qa_check_status = CheckStatus.PASS if payload.get("pull_request_mergeable") else CheckStatus.FAIL
+        qa_check_details = f"derived_from_pull_request.mergeable={payload.get('pull_request_mergeable')}"
+    elif payload.get("pull_request_mergeable_state") in {
+        GitHubMergeableState.CLEAN.value,
+        GitHubMergeableState.HAS_HOOKS.value,
+        GitHubMergeableState.UNSTABLE.value,
+    }:
+        qa_check_status = CheckStatus.PASS
+        qa_check_details = f"derived_from_pull_request.mergeable_state={payload.get('pull_request_mergeable_state')}"
+    elif payload.get("pull_request_mergeable_state") in {
+        GitHubMergeableState.DIRTY.value,
+        GitHubMergeableState.BLOCKED.value,
+        GitHubMergeableState.BEHIND.value,
+        GitHubMergeableState.DRAFT.value,
+    }:
+        qa_check_status = CheckStatus.FAIL
+        qa_check_details = f"derived_from_pull_request.mergeable_state={payload.get('pull_request_mergeable_state')}"
+    elif payload.get("pull_request_mergeable_state"):
+        qa_check_status = CheckStatus.WARN
+        qa_check_details = f"pull_request.mergeable_state={payload.get('pull_request_mergeable_state')}"
 
-    checks: list[ReviewCheck] = []
-    checks.append(
-        ReviewCheck(
-            name="qa_or_mergeability_green",
-            status=qa_check_status,
-            details=qa_check_details,
-        )
-    )
-    checks.append(
+    checks = [
+        ReviewCheck(name="qa_or_mergeability_green", status=qa_check_status, details=qa_check_details),
         ReviewCheck(
             name="pull_request_exists",
-            status="pass" if isinstance(pr_number, int) and pr_number > 0 else "fail",
-            details=f"pull_request_number={pr_number}",
-        )
-    )
-    checks.append(
+            status=CheckStatus.PASS if payload.get("pull_request_number", -1) > 0 else CheckStatus.FAIL,
+            details=f"pull_request_number={payload.get('pull_request_number')}",
+        ),
         ReviewCheck(
             name="pull_request_open",
-            status="pass" if pr_state == "open" else "fail",
-            details=f"pull_request_state={pr_state or 'missing'}",
-        )
-    )
-    checks.append(
+            status=CheckStatus.PASS if payload.get("pull_request_state") == GitHubPullRequestState.OPEN.value else CheckStatus.FAIL,
+            details=f"pull_request_state={payload.get('pull_request_state') or 'missing'}",
+        ),
         ReviewCheck(
             name="pull_request_not_draft",
-            status="pass" if not pr_draft else "fail",
-            details=f"pull_request_draft={pr_draft}",
-        )
-    )
-    checks.append(
+            status=CheckStatus.PASS if not payload.get("pull_request_draft", False) else CheckStatus.FAIL,
+            details=f"pull_request_draft={payload.get('pull_request_draft', False)}",
+        ),
         ReviewCheck(
             name="pull_request_url_present",
-            status="pass" if pr_url else "warn",
+            status=CheckStatus.PASS if payload.get("pull_request_url") else CheckStatus.WARN,
             details="Pull request URL should be populated for reviewer context.",
-        )
-    )
-    checks.append(
+        ),
         ReviewCheck(
             name="manual_approval_recorded",
-            status="pass" if review_approved else "warn",
+            status=CheckStatus.PASS if payload.get("review_approved") else CheckStatus.WARN,
             details="Set context.review_approved=true when human review is completed.",
-        )
-    )
+        ),
+    ]
 
-    has_failures = any(check.status == "fail" for check in checks)
-    has_warnings = any(check.status == "warn" for check in checks)
+    has_failures = any(check.status == CheckStatus.FAIL for check in checks)
+    has_warnings = any(check.status == CheckStatus.WARN for check in checks)
     if has_failures:
-        status = "blocked"
+        status = StageStatus.BLOCKED
     elif has_warnings:
-        status = "needs_review"
+        status = StageStatus.NEEDS_REVIEW
     else:
-        status = "ok"
+        status = StageStatus.OK
 
     required_actions: list[str] = []
-    if qa_check_status == "fail":
+    if qa_check_status == CheckStatus.FAIL:
         required_actions.append(
             "Resolve failing checks or update the branch until the pull request becomes mergeable."
         )
-    elif qa_check_status == "warn":
+    elif qa_check_status == CheckStatus.WARN:
         required_actions.append(
             "Confirm CI and required checks have completed; mergeability status is still unknown."
         )
-    if not (isinstance(pr_number, int) and pr_number > 0):
+    if not payload.get("pull_request_number", -1) > 0:
         required_actions.append("Open a pull request and provide pull_request_number.")
-    if pr_state != "open":
+    if payload.get("pull_request_state") != GitHubPullRequestState.OPEN.value:
         required_actions.append("Re-open the pull request before merge.")
-    if pr_draft:
+    if payload.get("pull_request_draft", False):
         required_actions.append("Mark the pull request ready for review (not draft).")
-    if review_approved is not True:
+    if not payload.get("review_approved"):
         required_actions.append("Mark review_approved=true after human approval.")
-    if not pr_url:
+    if not payload.get("pull_request_url"):
         required_actions.append("Provide pull_request_url for reviewer context.")
 
     state["status"] = status
-    state["checks"] = [check.model_dump() for check in checks]
+    state["checks"] = checks
     state["required_actions"] = required_actions
     state["summary"] = (
-        f"Review checks complete: {sum(c.status == 'pass' for c in checks)} pass, "
-        f"{sum(c.status == 'warn' for c in checks)} warn, "
-        f"{sum(c.status == 'fail' for c in checks)} fail."
+        f"Review checks complete: {sum(c.status == CheckStatus.PASS for c in checks)} pass, "
+        f"{sum(c.status == CheckStatus.WARN for c in checks)} warn, "
+        f"{sum(c.status == CheckStatus.FAIL for c in checks)} fail."
     )
     state["notes"] = {
         "qa_status": qa_status,
-        "pull_request_number": pr_number,
-        "pull_request_state": pr_state,
-        "pull_request_draft": pr_draft,
-        "pull_request_url_present": bool(pr_url),
-        "pull_request_mergeable": pr_mergeable if isinstance(pr_mergeable, bool) else None,
-        "pull_request_mergeable_state": pr_mergeable_state,
-        "review_approved": review_approved is True,
+        "pull_request_number": payload.get("pull_request_number", -1),
+        "pull_request_state": payload.get("pull_request_state", ""),
+        "pull_request_draft": payload.get("pull_request_draft", False),
+        "pull_request_url_present": bool(payload.get("pull_request_url", "")),
+        "pull_request_mergeable": payload.get("pull_request_mergeable", None),
+        "pull_request_mergeable_state": payload.get("pull_request_mergeable_state", ""),
+        "review_approved": payload.get("review_approved", False) is True,
     }
     return state
 
 def finalize(state: dict[str, Any]) -> dict[str, Any]:
-    checks: list[ReviewCheck] = []
-    for item in state.get("checks", []):
-        if isinstance(item, ReviewCheck):
-            checks.append(item)
-            continue
-        if isinstance(item, dict):
-            checks.append(
-                ReviewCheck(
-                    name=str(item.get("name", "")).strip(),
-                    status=str(item.get("status", "warn")).strip().lower(),
-                    details=str(item.get("details", "")),
-                )
-            )
+    raw_checks = state.get("checks", [])
+    checks = [item for item in raw_checks if isinstance(item, ReviewCheck)] if isinstance(raw_checks, list) else []
+    required_actions = state.get("required_actions", [])
     result = ReviewOutput(
-        summary=str(state.get("summary", "")).strip(),
+        summary=state.get("summary", ""),
         checks=checks,
-        required_actions=[
-            action for action in state.get("required_actions", []) if isinstance(action, str) and action.strip()
-        ],
+        required_actions=required_actions if isinstance(required_actions, list) else [],
     )
-    state["final_output"] = result.model_dump()
+    state["final_output"] = result.model_dump(mode="json")
     return state

@@ -5,6 +5,7 @@ from pathlib import Path
 from subprocess import run
 from typing import Any
 from urllib.parse import quote, urlsplit, urlunsplit
+from uuid import UUID
 
 from core.contracts.enums import PipelineStage
 from core.orchestrator.models import RunModel, StageResult, StageStatus
@@ -17,23 +18,38 @@ class PublishStep(PipelineStep):
 
     @staticmethod
     def _normalize_text(value: Any) -> str:
-        return str(value or "").strip()
+        return value.strip() if isinstance(value, str) else ""
+
+    @staticmethod
+    def _first_non_empty_text(*values: Any) -> str:
+        for value in values:
+            normalized = PublishStep._normalize_text(value)
+            if normalized:
+                return normalized
+        return ""
 
     @staticmethod
     def _derive_head_branch(context: dict[str, Any]) -> str:
-        head = str(context.get("head_branch") or context.get("pr_head") or "").strip()
+        head = PublishStep._first_non_empty_text(
+            context.get("head_branch"),
+            context.get("pr_head"),
+        )
         if head:
             return head
         issue_number = context.get("issue_number")
         if isinstance(issue_number, int):
             return f"autopr/issue-{issue_number}"
-        run_id = str(context.get("run_id") or "").strip()
+        run_id_value = context.get("run_id")
+        if isinstance(run_id_value, UUID):
+            run_id = run_id_value.hex
+        else:
+            run_id = PublishStep._normalize_text(run_id_value)
         run_suffix = run_id[:8] if run_id else "manual"
         return f"autopr/run-{run_suffix}"
 
     @staticmethod
     def _derive_commit_message(context: dict[str, Any]) -> str:
-        explicit = str(context.get("commit_message") or "").strip()
+        explicit = PublishStep._normalize_text(context.get("commit_message"))
         if explicit:
             return explicit
         issue_number = context.get("issue_number")
@@ -50,17 +66,18 @@ class PublishStep(PipelineStep):
             return clone_url
         if "@" in parsed.netloc:
             return clone_url
+        # Inject token only for cloning; never rewrite ssh or already-authenticated URLs.
         safe_token = quote(token, safe="")
         netloc = f"x-access-token:{safe_token}@{parsed.netloc}"
         return urlunsplit((parsed.scheme, netloc, parsed.path, parsed.query, parsed.fragment))
 
     @staticmethod
     def _sanitize_error_text(error_text: str, context: dict[str, Any]) -> str:
-        text = str(error_text or "")
+        text = error_text if isinstance(error_text, str) else ""
         secrets = [
-            str(context.get("github_token") or "").strip(),
-            str(os.environ.get("GITHUB_TOKEN") or "").strip(),
-            str(os.environ.get("GH_TOKEN") or "").strip(),
+            PublishStep._normalize_text(context.get("github_token")),
+            PublishStep._normalize_text(os.environ.get("GITHUB_TOKEN")),
+            PublishStep._normalize_text(os.environ.get("GH_TOKEN")),
         ]
         for secret in secrets:
             if secret:
@@ -86,37 +103,36 @@ class PublishStep(PipelineStep):
         if response.returncode != 0:
             return ""
         credentials: dict[str, str] = {}
-        for line in str(response.stdout or "").splitlines():
+        for line in (response.stdout or "").splitlines():
             if "=" not in line:
                 continue
             key, value = line.split("=", 1)
             credentials[key.strip()] = value.strip()
-        return str(credentials.get("password", "")).strip()
+        password = credentials.get("password")
+        return password if isinstance(password, str) else ""
 
     @staticmethod
     def _configure_git_identity(git: GitService, context: dict[str, Any]) -> None:
-        author_name = str(
-            context.get("git_author_name")
-            or os.environ.get("GIT_AUTHOR_NAME")
-            or os.environ.get("GIT_COMMITTER_NAME")
-            or "AutoPR Bot"
-        ).strip()
-        author_email = str(
-            context.get("git_author_email")
-            or os.environ.get("GIT_AUTHOR_EMAIL")
-            or os.environ.get("GIT_COMMITTER_EMAIL")
-            or "autopr-bot@users.noreply.github.com"
-        ).strip()
+        author_name = PublishStep._first_non_empty_text(
+            context.get("git_author_name"),
+            os.environ.get("GIT_AUTHOR_NAME"),
+            os.environ.get("GIT_COMMITTER_NAME"),
+            "AutoPR Bot",
+        )
+        author_email = PublishStep._first_non_empty_text(
+            context.get("git_author_email"),
+            os.environ.get("GIT_AUTHOR_EMAIL"),
+            os.environ.get("GIT_COMMITTER_EMAIL"),
+            "autopr-bot@users.noreply.github.com",
+        )
         git.set_config("user.name", author_name)
         git.set_config("user.email", author_email)
 
     @staticmethod
-    def _write_generated_files(workspace_path: Path, files: dict[str, Any]) -> list[str]:
+    def _write_generated_files(workspace_path: Path, files: dict[str, str]) -> list[str]:
         workspace_root = workspace_path.resolve()
         written_files: list[str] = []
         for relative_path, content in files.items():
-            if not isinstance(relative_path, str):
-                continue
             normalized_path = relative_path.strip()
             if not normalized_path:
                 continue
@@ -126,7 +142,7 @@ class PublishStep(PipelineStep):
             destination = (workspace_root / path_obj).resolve()
             destination.relative_to(workspace_root)
             destination.parent.mkdir(parents=True, exist_ok=True)
-            destination.write_text(str(content), encoding="utf-8")
+            destination.write_text(content, encoding="utf-8")
             written_files.append(normalized_path)
         return written_files
 
@@ -146,11 +162,12 @@ class PublishStep(PipelineStep):
             except Exception:
                 pass
 
+        # Fall back to an isolated clone when no valid local workspace is provided.
         clone_url = self._normalize_text(context.get("repository_clone_url")) or f"https://github.com/{repository}.git"
-        token = self._normalize_text(
-            context.get("github_token")
-            or os.environ.get("GITHUB_TOKEN")
-            or os.environ.get("GH_TOKEN")
+        token = self._first_non_empty_text(
+            context.get("github_token"),
+            os.environ.get("GITHUB_TOKEN"),
+            os.environ.get("GH_TOKEN"),
         )
         tokenized_clone_url = self._with_tokenized_https_clone_url(clone_url, token)
 
@@ -237,6 +254,7 @@ class PublishStep(PipelineStep):
                 pass
             git.ensure_checkout_branch(head_branch, remote=remote_name, base_branch=base_branch)
 
+            # Materialize generated artifacts exactly as produced by coding stage.
             written_files = self._write_generated_files(workspace_path, files_payload)
             if not written_files:
                 raise ValueError("No valid generated files to write")
@@ -260,6 +278,7 @@ class PublishStep(PipelineStep):
 
             resolved_api_token = self._resolve_api_token_from_git_credentials(workspace_path, repository)
             if resolved_api_token:
+                # Prefer the git credential token for subsequent API calls in this run.
                 context["github_token"] = resolved_api_token
                 pr_auth_source = "git_credential"
 

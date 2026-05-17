@@ -26,10 +26,12 @@ class StateMachine:
         metadata: dict[str, Any] | None = None,
         validate: bool = True,
     ) -> str:
+        # Guard invalid jumps unless a caller explicitly disables validation.
         if validate and not can_transition(self.state, next_state, self.run_type):
             raise InvalidStateTransitionError(
                 f"Invalid transition for {self.run_type.value}: {self.state} -> {next_state}"
             )
+        # Every transition is captured as an immutable event for later replay.
         event = TransitionEvent(
             from_state=self.state,
             to_state=next_state,

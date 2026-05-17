@@ -15,19 +15,19 @@ class StepRuntime(Protocol):
         reason: str = "",
         metadata: Dict[str, Any] | None = None
     ) -> str:
-        
+
         state = self.state_machine.transition(next_state, reason=reason, metadata=metadata)
         self.run.state = state
         self.run.transition_history = list(self.state_machine.history)
         return state
-    
+
     def run_worker(
         self,
         stage: PipelineStage,
         worker: Any,
         *args: Any
     ) -> StageResult:
-        
+
         worker_result_ref = worker.run.remote(*args)
         stage_status, worker_result = ray.get(worker_result_ref)
         # stage_status = self._stage_status(worker_result)
@@ -40,7 +40,7 @@ class StepRuntime(Protocol):
             status = stage_status,
             outputs = worker_result
         )
-    
+
 def is_success_status(status: StageStatus) -> bool:
     return status in _SUCCESS_STATUSES
 
@@ -49,8 +49,9 @@ class PipelineStep(ABC):
     success_state: str | None = None
 
     def before(self, context: Dict[str, Any], run: RunModel) -> List[Tuple[str, str]]:
+        # Hook for pre-step transitions or setup.
         return []
-    
+
     def execute(
         self,
         context: Dict[str, Any],
@@ -58,8 +59,9 @@ class PipelineStep(ABC):
         runtime: StepRuntime
     ) -> StageResult:
         raise NotImplementedError
-    
+
     def after(self, result: StageResult, context: Dict[str, Any], run: RunModel) -> List[Tuple[str, str]]:
+        # Default behavior advances to success_state when the step is green.
         if self.success_state and is_success_status(result.status):
             return [(self.success_state, self.stage.value)]
         return []

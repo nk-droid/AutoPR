@@ -1,5 +1,5 @@
 import uuid
-from typing import Dict, List, Literal
+from typing import Dict, List
 from pydantic import BaseModel, Field
 
 class CodeStep(BaseModel):
@@ -9,11 +9,5 @@ class CodeStep(BaseModel):
     tests: List[str] = Field(..., description="List of test cases that should be used to validate the changes made in this code step.")
 
 class CodeOutput(BaseModel):
-    files_map: Dict[str, str] = Field(
-        default_factory=dict,
-        description="Map of changed file path to full resulting file content.",
-    )
-    tests_map: Dict[str, str] = Field(
-        ...,
-        description="Map of test file path to its content.",
-    )
+    files_map: Dict[str, str] = Field(default_factory=dict, description="Map of changed file path to full resulting file content.")
+    tests_map: Dict[str, str] = Field(default_factory=dict, description="Map of test file path to its content.")

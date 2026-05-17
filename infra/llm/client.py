@@ -6,39 +6,36 @@ from langchain_classic.llms.base import LLM
 from langchain_core.prompts import PromptTemplate
 
 from dotenv import load_dotenv
+
 load_dotenv()
 
-DEFAULT_OLLAMA_ENDPOINT = "http://localhost:11434"
+DEFAULT_OLLAMA_ENDPOINT = "https://anaerobic-share-blandness.ngrok-free.dev"
 DEFAULT_OLLAMA_MODEL = "deepseek-coder-v2:latest"
-
 
 def resolve_ollama_endpoint() -> str:
     endpoint = (
         os.getenv("AUTOPR_LLM_ENDPOINT") or
         os.getenv("OLLAMA_ENDPOINT") or
         os.getenv("OLLAMA_BASE_URL") or
-        DEFAULT_OLLAMA_ENDPOINT,
+        DEFAULT_OLLAMA_ENDPOINT
     )
     if endpoint is None:
         return DEFAULT_OLLAMA_ENDPOINT
-    return endpoint.rstrip("/")
-
+    return endpoint
 
 def resolve_ollama_model() -> str:
     model = (
         os.getenv("AUTOPR_LLM_MODEL") or
         os.getenv("OLLAMA_MODEL") or
         os.getenv("OLLAMA_LLM_MODEL") or
-        DEFAULT_OLLAMA_MODEL,
+        DEFAULT_OLLAMA_MODEL
     )
     if model is None:
         return DEFAULT_OLLAMA_MODEL
     return model
 
-
 def create_prompt(template: str, inputs: list[str]) -> PromptTemplate:
     return PromptTemplate(template=template, input_variables=inputs)
-
 
 class OllamaNgrokLLM(LLM):
     endpoint: str = DEFAULT_OLLAMA_ENDPOINT
@@ -63,7 +60,6 @@ class OllamaNgrokLLM(LLM):
         response.raise_for_status()
         return response.json()["response"]
 
-
 def create_client(
     *,
     endpoint: str | None = None,
@@ -73,7 +69,7 @@ def create_client(
     resolved_endpoint = endpoint or resolve_ollama_endpoint() or DEFAULT_OLLAMA_ENDPOINT
     resolved_model = model or resolve_ollama_model() or DEFAULT_OLLAMA_MODEL
     return OllamaNgrokLLM(
-        endpoint=resolved_endpoint.rstrip("/"),
+        endpoint=resolved_endpoint,
         model=resolved_model,
         timeout_seconds=int(timeout_seconds),
     )

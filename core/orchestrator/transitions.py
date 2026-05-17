@@ -1,6 +1,7 @@
 from core.contracts.enums import RunState
 from core.orchestrator.models import MergeDecision, PRDecision, RunType, StageResult, StageStatus
 
+# Issue-to-PR flow allows fallback from QA back to coding for iteration.
 ISSUE_TO_PR_TRANSITIONS: dict[str, set[str]] = {
     RunState.RECEIVED.value: {RunState.TRIAGED.value},
     RunState.TRIAGED.value: {RunState.PLANNED.value},
@@ -13,6 +14,7 @@ ISSUE_TO_PR_TRANSITIONS: dict[str, set[str]] = {
     RunState.MERGED.value: set(),
 }
 
+# PR-to-merge flow starts from an already opened PR and skips earlier stages.
 PR_TO_MERGE_TRANSITIONS: dict[str, set[str]] = {
     RunState.RECEIVED.value: {RunState.REVIEW_PENDING.value},
     RunState.PR_OPENED.value: {RunState.REVIEW_PENDING.value},
@@ -35,6 +37,7 @@ def can_transition(
     candidate_state: str,
     run_type: RunType = RunType.ISSUE_TO_PR,
 ) -> bool:
+    # No-op transitions are treated as valid to keep callers idempotent.
     if candidate_state == current_state:
         return True
     return candidate_state in allowed_next_states(current_state, run_type)

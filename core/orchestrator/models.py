@@ -9,6 +9,10 @@ class RunType(str, Enum):
     ISSUE_TO_PR = "ISSUE_TO_PR"
     PR_TO_MERGE = "PR_TO_MERGE"
 
+class IssueActions(str, Enum):
+    OPENED = "opened"
+    REOPENED = "reopened"
+
 class StageStatus(str, Enum):
     OK = "ok"
     ACCEPTED = "accepted"
