@@ -71,9 +71,19 @@ class RedisWebhookQueue:
         return message.message_id
 
     async def reserve(self, timeout_sec: int = 5) -> tuple[WebhookQueueMessage, str] | None:
-        raw = await self._redis.brpoplpush(self._queue_key, self._processing_key, timeout_sec)
+        timeout = int(timeout_sec) if timeout_sec is not None else 0
+
+        raw = await self._redis.blmove(
+            self._queue_key,
+            self._processing_key,
+            timeout=timeout,
+            src="RIGHT",
+            dest="LEFT",
+        )
+
         if raw is None:
             return None
+
         return WebhookQueueMessage.model_validate_json(raw), raw
 
     async def ack(self, raw_message: str) -> None:
