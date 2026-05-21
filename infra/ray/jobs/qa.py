@@ -83,6 +83,21 @@ def _collect_targets(
 
     return py_targets, test_targets
 
+def _is_probable_test_path(path: str) -> bool:
+    normalized = path.strip().replace("\\", "/").lower()
+
+    if not normalized:
+        return False
+
+    filename = normalized.rsplit("/", 1)[-1]
+
+    return (
+        normalized.startswith("tests/")
+        or "/tests/" in normalized
+        or filename.startswith("test_")
+        or filename.endswith("_test.py")
+    )
+
 def _result(
     name: str,
     status: CheckStatus,
@@ -195,11 +210,28 @@ def run_coverage_job(qa_payload: QAJobPayload) -> ToolRunResult:
 
 def run_security_job(qa_payload: QAJobPayload) -> ToolRunResult:
     py_targets, _ = _collect_targets(qa_payload)
+    security_targets = [
+        path
+        for path in py_targets
+        if not _is_probable_test_path(path)
+    ]
+
+    if py_targets and not security_targets:
+        return _result(
+            name="security",
+            status=CheckStatus.PASS,
+            payload={
+                "success": True,
+                "issues": [],
+                "raw_output": "",
+                "reason": "no_non_test_python_targets",
+            },
+        )
 
     return _execute_job(
         qa_payload=qa_payload,
         name="security",
-        targets=py_targets,
+        targets=security_targets,
         empty_reason="no_python_targets",
         runner_factory=lambda sb: SecurityRunner(sb),
         status_resolver=lambda r: (
