@@ -17,13 +17,6 @@ from core.contracts.run_context import (
 
 from infra.ray.jobs.qa import run_coverage_job, run_lint_job, run_security_job, run_tests_job
 
-ray.init(
-  include_dashboard=True,
-  dashboard_host="0.0.0.0",
-  dashboard_port=8265,
-  ignore_reinit_error=True,
-)
-
 @ray.remote
 class TriageWorker:
     def __init__(self):
