@@ -2,8 +2,8 @@ import os
 import ray
 from typing import Any, Dict
 
-from core.contracts.plan import PlanStep
-from core.contracts.code import CodeOutput
+from core.contracts.plan import PlanStep as PlanStepModel
+from core.contracts.code import CodeOutput as CodeOutputModel
 from core.contracts.enums import CheckStatus, PipelineStage, RunState
 from core.orchestrator.steps.base import PipelineStep, StepRuntime, is_success_status
 from core.contracts.run_context import CodeWorkerInput, IssueToPRContext, PlanWorkerInput, PRToMergeContext, PRWorkerInput, QAJobPayload, QAWorkerInput, ReviewWorkerInput, ToolRunResult, TriageIssueInput, TriageWorkerInput
@@ -102,7 +102,7 @@ class CodeStep(PipelineStep):
 
         selected_step_raw = steps[step_index]
         try:
-            selected_step = PlanStep(**selected_step_raw)
+            selected_step = PlanStepModel(**selected_step_raw)
         except Exception as exc:
             return StageResult(
                 stage=self.stage,
@@ -133,7 +133,7 @@ class CodeStep(PipelineStep):
         )
         code_output = coding_result.outputs if isinstance(coding_result.outputs, dict) else {}
         try:
-            normalized_code_output = CodeOutput(**code_output).model_dump()
+            normalized_code_output = CodeOutputModel(**code_output).model_dump()
         except Exception:
             normalized_code_output = code_output
         return StageResult(
@@ -152,8 +152,8 @@ class QAStep(PipelineStep):
 
     def execute(self, context: dict[str, Any], run: RunModel, runtime: StepRuntime) -> StageResult:
         try:
-            coding_output = CodeOutput(**context.get("coding_output", {}))
-            coding_step = PlanStep(**context.get("coding_step", {}))
+            coding_output = CodeOutputModel(**context.get("coding_output", {}))
+            coding_step = PlanStepModel(**context.get("coding_step", {}))
         except Exception as exc:
             return StageResult(
                 stage=self.stage,
