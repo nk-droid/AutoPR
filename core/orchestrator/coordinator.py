@@ -1,13 +1,17 @@
+import os
 import ray
 from typing import Any
 
 from core.contracts.enums import PipelineStage, RunState
 from core.contracts.run_context import IssueToPRContext, PRToMergeContext
-from core.orchestrator.models import RunModel, RunType, StageResult
+from core.orchestrator.models import RunModel, RunType, StageResult, StageStatus
 from core.orchestrator.state_machine import StateMachine
 from core.orchestrator.steps.base import is_success_status
 from core.orchestrator.steps.registry import steps_for_run_type
+from core.orchestrator.transitions import can_transition
 from infra.storage.artifacts import record_run_event, save_artifact, upsert_run
+from infra.storage.review_requests import attach_review_request_slack_ref, create_review_request
+from infra.slack.notification import send_needs_review_notification
 
 import dotenv
 
@@ -113,6 +117,57 @@ class Coordinator:
             status=stage_status,
             outputs=outputs,
         )
+    
+    @staticmethod
+    def _first_stage_index(steps: list[Any], stage: PipelineStage) -> int | None:
+        for index, step in enumerate(steps):
+            if getattr(step, "stage", None) == stage:
+                return index
+        return None
+    
+    def _create_review_request(
+        self,
+        *,
+        step_index: int,
+        result: StageResult,
+        context: dict[str, Any],
+    ) -> None:
+        stage_name = result.stage.value if hasattr(result.stage, "value") else str(result.stage)
+        review_context = {
+            "repository": context.get("repository") or self.run.repository,
+            "issue_number": context.get("issue_number") or self.run.issue_number,
+            "pull_request_number": context.get("pull_request_number") or self.run.pull_request_number,
+            "metadata": context.get("metadata") if isinstance(context.get("metadata"), dict) else dict(self.run.metadata),
+            "head_branch": context.get("head_branch"),
+            "base_branch": context.get("base_branch"),
+            "execute_remote_actions": bool(context.get("execute_remote_actions", False)),
+            "review_approved": bool(context.get("review_approved", False)),
+            "_resume_stage_index": int(step_index),
+        }
+
+        review_request = create_review_request(
+            run_id=str(self.run.run_id),
+            run_type=self.run.run_type.value if hasattr(self.run.run_type, "value") else str(self.run.run_type),
+            stage=stage_name,
+            stage_index=step_index,
+            context=review_context,
+        )
+
+        slack_result = send_needs_review_notification(self.run, result, review_request)
+        message_ref = slack_result.get("message_ref")
+        if isinstance(message_ref, str) and message_ref.strip():
+            attach_review_request_slack_ref(review_request["request_id"], message_ref)
+
+        self._persist_run(
+            event_type="needs_review_raised",
+            payload={
+                "request_id": review_request["request_id"],
+                "stage": stage_name,
+                "stage_index": step_index,
+                "slack_sent": bool(slack_result.get("sent", False)),
+                "slack_reason": str(slack_result.get("reason", "")),
+            },
+        )
 
     def _run_steps(self, context: dict[str, Any]) -> RunModel:
         self._seed_context_from_run(context)
@@ -123,10 +178,43 @@ class Coordinator:
             stage_results = {}
             context["_stage_results"] = stage_results
 
-        # Steps can drive state transitions via before/after hooks around execution.
-        for step in steps_for_run_type(self.run.run_type):
+        for previous in self.run.stage_results:
+            previous_stage_name = previous.stage.value if hasattr(previous.stage, "value") else str(previous.stage)
+            stage_results[previous_stage_name] = previous
+            if isinstance(previous.outputs, dict):
+                for key, value in previous.outputs.items():
+                    context.setdefault(key, value)
+
+        qa_max_retries = int(os.getenv("QA_MAX_RETRIES", "1"))
+
+        raw_retry_count = context.get("qa_retry_count", 0)
+        try:
+            qa_retry_count = int(raw_retry_count)
+        except (TypeError, ValueError):
+            qa_retry_count = 0
+
+        context["qa_retry_count"] = qa_retry_count
+        context["qa_max_retries"] = qa_max_retries
+
+        steps = steps_for_run_type(self.run.run_type)
+        code_stage_index = self._first_stage_index(steps, PipelineStage.CODE)
+
+        raw_resume_index = context.get("_resume_stage_index", 0)
+        try:
+            step_index = int(raw_resume_index)
+        except (TypeError, ValueError):
+            step_index = 0
+        if step_index < 0 or step_index >= len(steps):
+            step_index = 0
+
+        while step_index < len(steps):
+            step = steps[step_index]
             for next_state, reason in step.before(context, self.run):
                 self.transition_to(next_state, reason=reason)
+
+            # FIXME: move to before function in QAStep
+            if step.stage == PipelineStage.QA and self.run.state != RunState.QA_RUNNING.value:
+                self.transition_to(RunState.QA_RUNNING.value, reason="qa started")
 
             result = self.add_stage_result(step.execute(context, self.run, self))
             stage_results[str(result.stage)] = result
@@ -138,8 +226,51 @@ class Coordinator:
             for next_state, reason in step.after(result, context, self.run):
                 self.transition_to(next_state, reason=reason or str(step.stage.value))
 
+            if getattr(step, "stage", None) == PipelineStage.PUBLISH and result.status == StageStatus.NEEDS_REVIEW:
+                self._create_review_request(
+                    step_index=step_index,
+                    result=result,
+                    context=context
+                )
+
             if not is_success_status(result.status):
+                is_qa_step = getattr(step, "stage", None) == PipelineStage.QA
+                can_retry_qa = (
+                    is_qa_step
+                    and code_stage_index is not None
+                    and qa_retry_count < qa_max_retries
+                )
+
+                if can_retry_qa:
+                    qa_retry_count += 1
+                    context["qa_retry_count"] = qa_retry_count
+
+                    retry_metadata = {
+                        "qa_retry_count": qa_retry_count,
+                        "qa_max_retries": qa_max_retries,
+                        "qa_status": result.status.value
+                    }
+
+                    if can_transition(self.state_machine.state, RunState.QA_RUNNING.value, self.run.run_type):
+                        self.transition_to(
+                            RunState.QA_RUNNING.value,
+                            reason="qa_failed_retry_pending",
+                            metadata=retry_metadata
+                        )
+
+                    self.transition_to(
+                        RunState.CODING.value,
+                        reason=f"qa_retry_{qa_retry_count}",
+                        metadata=retry_metadata,
+                    )
+                    self._persist_run(event_type="qa_retry_scheduled", payload=retry_metadata)
+
+                    step_index = code_stage_index
+                    continue
+
                 break
+
+            step_index += 1
 
         return self.run
 
