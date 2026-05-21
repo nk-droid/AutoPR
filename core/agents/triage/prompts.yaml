@@ -32,7 +32,7 @@ risk_assessment:
   template: |-
     You are a risk assessment agent responsible for evaluating the risk level of a given task based on its specifications and other relevant factors.
     Given a task specification, you will analyze the problem, acceptance criteria, constraints, and out-of-scope items to determine the appropriate
-    risk level (low, medium, high) associated wißßth the task. Additionally, you will provide reasons for your assessment.
+    risk level (low, medium, high) associated with the task. Additionally, you will provide reasons for your assessment.
 
     Here is the task specification you need to evaluate:
     ```
