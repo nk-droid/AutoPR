@@ -2,36 +2,138 @@ services:
   redis:
     image: redis:7-alpine
     restart: unless-stopped
+
     ports:
       - "6379:6379"
+
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 5s
       timeout: 3s
       retries: 20
+
     volumes:
-      - /app/data
+      - redis_data:/data
 
   api:
     build:
       context: ..
       dockerfile: docker/api.Dockerfile
+
+    env_file:
+      - ../.env
+
     environment:
       AUTOPR_REDIS_URL: redis://redis:6379/0
+      AUTOPR_TRACE_EXPORTER: otlp
+      OTEL_EXPORTER_OTLP_TRACES_ENDPOINT: tempo:4317
+      AUTOPR_DATABASE_URL: postgresql+psycopg://postgres:postgres@postgres:5432/postgres
+      AUTOPR_DATABASE_ASYNC_URL: postgresql+asyncpg://postgres:postgres@postgres:5432/postgres
+
     ports:
       - "8000:8000"
-    volumes:
-      - /app/data
+      - "11434:11434"
+
+    depends_on:
+      redis:
+        condition: service_healthy
+      tempo:
+        condition: service_started
+      postgres:
+        condition: service_healthy
+
     restart: unless-stopped
 
   worker:
     build:
       context: ..
       dockerfile: docker/worker.Dockerfile
+
+    env_file:
+      - ../.env
+
     environment:
       AUTOPR_REDIS_URL: redis://redis:6379/0
+      AUTOPR_TRACE_EXPORTER: otlp
+      OTEL_EXPORTER_OTLP_TRACES_ENDPOINT: tempo:4317
+      AUTOPR_DATABASE_URL: postgresql+psycopg://postgres:postgres@postgres:5432/postgres
+      AUTOPR_DATABASE_ASYNC_URL: postgresql+asyncpg://postgres:postgres@postgres:5432/postgres
+
     ports:
       - "8265:8265"
-    volumes:
-      - /app/data
+
+    depends_on:
+      redis:
+        condition: service_healthy
+      tempo:
+        condition: service_started
+      postgres:
+        condition: service_healthy
+
     restart: unless-stopped
+
+  grafana:
+    image: grafana/grafana:latest
+    environment:
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Admin
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./grafana-datasources.yaml:/etc/grafana/provisioning/datasources/datasources.yaml
+    depends_on:
+      - tempo
+      - prometheus
+    restart: unless-stopped
+
+  tempo:
+    image: grafana/tempo:latest
+    command: ["-config.file=/etc/tempo.yaml"]
+    volumes:
+      - ./tempo.yaml:/etc/tempo.yaml
+    ports:
+      - "14317:4317"
+      - "14318:4318"
+      - "13200:3200"
+    restart: unless-stopped
+
+  prometheus:
+    image: prom/prometheus:latest
+    ports:
+      - "9090:9090"
+    restart: unless-stopped
+
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: postgres
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  pgadmin:
+    image: dpage/pgadmin4:latest
+    restart: unless-stopped
+    ports:
+      - "5050:80"
+    environment:
+      PGADMIN_DEFAULT_EMAIL: admin@autopr.com
+      PGADMIN_DEFAULT_PASSWORD: admin
+    volumes:
+      - pgadmin_data:/var/lib/pgadmin
+    depends_on:
+      - postgres
+
+volumes:
+  redis_data:
+  postgres_data:
+  pgadmin_data:

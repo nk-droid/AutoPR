@@ -1,61 +1,45 @@
-import json
+from select import select
 import uuid
 from typing import Any
 from datetime import datetime, timezone
 
-from infra.storage.db import get_db
+from sqlalchemy import select, update, insert
+
+from infra.storage.engine import get_engine
+from infra.storage.schema import review_requests
 
 _ALLOWED_DECISIONS = {"approved", "disapproved"}
 
-def _utc_now_iso() -> str:
-    return datetime.now(timezone.utc).isoformat()
-
-def _json_dumps(value: Any) -> str:
-    return json.dumps(value, ensure_ascii=False, default=str)
-
-def _json_loads(value: str) -> dict[str, Any]:
-    try:
-        parsed = json.loads(value)
-    except json.JSONDecodeError:
-        return {}
-    return parsed if isinstance(parsed, dict) else {}
-
 def _row_to_dict(row: Any) -> dict[str, Any]:
     return {
-        "request_id": str(row["request_id"]),
-        "run_id": str(row["run_id"]),
-        "run_type": str(row["run_type"]),
-        "stage": str(row["stage"]),
-        "stage_index": int(row["stage_index"]),
-        "status": str(row["status"]),
-        "decision": str(row["decision"]),
-        "decision_source": str(row["decision_source"]),
-        "decision_by": str(row["decision_by"]),
-        "reason": str(row["reason"]),
-        "context": _json_loads(str(row["context_json"])),
-        "slack_message_ref": str(row["slack_message_ref"]),
-        "decided_at_utc": str(row["decided_at_utc"]),
-        "applied_at_utc": str(row["applied_at_utc"]),
-        "execution_run_id": str(row["execution_run_id"]),
-        "created_at_utc": str(row["created_at_utc"]),
-        "updated_at_utc": str(row["updated_at_utc"]),
+        "request_id": row.request_id,
+        "run_id": row.run_id,
+        "run_type": row.run_type,
+        "stage": row.stage,
+        "stage_index": row.stage_index,
+        "status": row.status,
+        "decision": row.decision or "",
+        "decision_source": row.decision_source or "",
+        "decision_by": row.decision_by or "",
+        "reason": row.reason or "",
+        "context": row.context or {},
+        "slack_message_ref": row.slack_message_ref or "",
+        "decided_at": row.decided_at or "",
+        "applied_at": row.applied_at or "",
+        "execution_run_id": row.execution_run_id or "",
+        "created_at": row.created_at or "",
+        "updated_at": row.updated_at or "",
     }
 
 def get_review_request(request_id: str) -> dict[str, Any] | None:
-    with get_db() as conn:
-        row = conn.execute(
-            """
-            SELECT
-                request_id, run_id, run_type, stage, stage_index, status,
-                decision, decision_source, decision_by, reason,
-                context_json, slack_message_ref, decided_at_utc, applied_at_utc,
-                execution_run_id, created_at_utc, updated_at_utc
-            FROM review_requests
-            WHERE request_id = ?
-            """,
-            (request_id,),
-        ).fetchone()
-    return _row_to_dict(row) if row else None
+    engine = get_engine()
+    query = select(review_requests).where(
+        review_requests.c.request_id == request_id
+    )
+    with engine.begin() as conn:
+        res = conn.execute(query).fetchone()
+        
+    return _row_to_dict(res) if res else None
 
 def create_review_request(
     *,
@@ -66,52 +50,35 @@ def create_review_request(
     context: dict[str, Any],
 ) -> dict[str, Any]:
     request_id = str(uuid.uuid4())
-    now = _utc_now_iso()
-    with get_db() as conn:
-        conn.execute(
-            """
-            INSERT INTO review_requests (
-                request_id, run_id, run_type, stage, stage_index, status,
-                decision, decision_source, decision_by, reason, context_json,
-                slack_message_ref, decided_at_utc, applied_at_utc, execution_run_id,
-                created_at_utc, updated_at_utc
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """,
-            (
-                request_id,
-                run_id,
-                run_type,
-                stage,
-                int(stage_index),
-                "pending",
-                "",
-                "",
-                "",
-                "",
-                _json_dumps(context if isinstance(context, dict) else {}),
-                "",
-                "",
-                "",
-                "",
-                now,
-                now,
-            ),
-        )
+    engine = get_engine()
+    query = insert(review_requests).values(
+        request_id=request_id,
+        run_id=run_id,
+        run_type=run_type,
+        stage=stage,
+        stage_index=stage_index,
+        context=context,
+        status="pending",
+    )
+
+    with engine.begin() as conn:
+        conn.execute(query)
+
     created = get_review_request(request_id)
     if created is None:
         raise RuntimeError("Failed to create review request")
     return created
 
 def attach_review_request_slack_ref(request_id: str, message_ref: str) -> None:
-    with get_db() as conn:
-        conn.execute(
-            """
-            UPDATE review_requests
-            SET slack_message_ref = ?, updated_at_utc = ?
-            WHERE request_id = ?
-            """,
-            (message_ref.strip(), _utc_now_iso(), request_id),
-        )
+    engine = get_engine()
+    query = update(review_requests).where(
+        review_requests.c.request_id == request_id
+    ).values(
+        slack_message_ref=message_ref.strip()
+    )
+
+    with engine.begin() as conn:
+        conn.execute(query)
 
 def record_review_decision(
     *,
@@ -140,32 +107,19 @@ def record_review_decision(
     if current["status"] == "decided" and current["decision"] == normalized:
         return current
 
-    now = _utc_now_iso()
-    with get_db() as conn:
-        conn.execute(
-            """
-            UPDATE review_requests
-            SET
-                status = ?,
-                decision = ?,
-                decision_source = ?,
-                decision_by = ?,
-                reason = ?,
-                decided_at_utc = ?,
-                updated_at_utc = ?
-            WHERE request_id = ?
-            """,
-            (
-                "decided",
-                normalized,
-                source.strip(),
-                decision_by.strip(),
-                reason.strip(),
-                now,
-                now,
-                request_id,
-            ),
-        )
+    engine = get_engine()
+    query = update(review_requests).where(
+        review_requests.c.request_id == request_id
+    ).values(
+        decision=normalized,
+        decision_source=source.strip(),
+        decision_by=decision_by.strip(),
+        reason=reason.strip(),
+        status="decided"
+    )
+
+    with engine.begin() as conn:
+        conn.execute(query)
 
     updated = get_review_request(request_id)
     if updated is None:
@@ -177,20 +131,16 @@ def mark_review_request_applied(
     request_id: str,
     execution_run_id: str = "",
 ) -> dict[str, Any]:
-    now = _utc_now_iso()
-    with get_db() as conn:
-        conn.execute(
-            """
-            UPDATE review_requests
-            SET
-                status = ?,
-                applied_at_utc = ?,
-                execution_run_id = ?,
-                updated_at_utc = ?
-            WHERE request_id = ?
-            """,
-            ("applied", now, execution_run_id.strip(), now, request_id),
-        )
+    engine = get_engine()
+    query = update(review_requests).where(
+        review_requests.c.request_id == request_id
+    ).values(
+        status="applied",
+        execution_run_id=execution_run_id.strip()
+    )
+
+    with engine.begin() as conn:
+        conn.execute(query)
 
     updated = get_review_request(request_id)
     if updated is None:

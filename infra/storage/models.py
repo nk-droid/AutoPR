@@ -8,7 +8,7 @@ class StoredArtifact(BaseModel):
     updated_at_utc: str
 
 class StoredRunEvent(BaseModel):
-    id: int
+    id: str
     run_id: str
     event_type: str
     payload: dict[str, Any] = Field(default_factory=dict)
