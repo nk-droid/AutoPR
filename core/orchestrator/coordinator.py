@@ -1,5 +1,6 @@
 import os
 import ray
+import time
 from typing import Any
 
 from core.contracts.enums import PipelineStage, RunState
@@ -13,8 +14,10 @@ from infra.storage.artifacts import record_run_event, save_artifact, upsert_run
 from infra.storage.review_requests import attach_review_request_slack_ref, create_review_request
 from infra.slack.notification import send_needs_review_notification
 
-import dotenv
+from observability.metrics import observe_run, observe_stage
+from observability.tracing import get_tracer, inject_trace_context
 
+import dotenv
 dotenv.load_dotenv()
 
 class Coordinator:
@@ -109,7 +112,8 @@ class Coordinator:
         self.run.metadata = context.get("metadata")
 
     def run_worker(self, stage: PipelineStage, worker: Any, *args: Any) -> StageResult:
-        worker_result_ref = worker.run.remote(*args)
+        trace_context = inject_trace_context()
+        worker_result_ref = worker.run.remote(*args, trace_context=trace_context)
         stage_status, worker_result = ray.get(worker_result_ref)
         outputs = worker_result if isinstance(worker_result, dict) else {"value": worker_result}
         return StageResult(
@@ -216,7 +220,18 @@ class Coordinator:
             if step.stage == PipelineStage.QA and self.run.state != RunState.QA_RUNNING.value:
                 self.transition_to(RunState.QA_RUNNING.value, reason="qa started")
 
-            result = self.add_stage_result(step.execute(context, self.run, self))
+            # result = self.add_stage_result(step.execute(context, self.run, self))
+
+            started_at = time.perf_counter()
+            result = step.execute(context, self.run, self)
+            observe_stage(
+                self.run.run_type,
+                step.stage,
+                result.status,
+                time.perf_counter() - started_at,
+            )
+
+            result = self.add_stage_result(result)
             stage_results[str(result.stage)] = result
 
             if isinstance(result.outputs, dict):
@@ -276,11 +291,37 @@ class Coordinator:
 
     def run_issue_to_pr(self, context: IssueToPRContext) -> RunModel:
         self.set_run_type(RunType.ISSUE_TO_PR)
-        return self._run_steps(context.model_dump(mode="json"))
+
+        with get_tracer().start_as_current_span(
+            "autopr.run",
+            attributes={
+                "autopr.run_id": str(self.run.run_id),
+                "autopr.run_type": self.run.run_type.value,
+                "autopr.repository": context.repository,
+                "autopr.issue_number": context.issue_number,
+            }
+        ) as span:
+            final_run = self._run_steps(context.model_dump(mode="json"))
+            span.set_attribute("autopr.final_state", final_run.state)
+            observe_run(final_run.run_type, final_run.state)
+            return final_run
 
     def run_pr_to_merge(self, context: PRToMergeContext) -> RunModel:
         self.set_run_type(RunType.PR_TO_MERGE)
-        return self._run_steps(context.model_dump(mode="json"))
+
+        with get_tracer().start_as_current_span(
+            "autopr.run",
+            attributes={
+                "autopr.run_id": str(self.run.run_id),
+                "autopr.run_type": self.run.run_type.value,
+                "autopr.repository": context.repository,
+                "autopr.pull_request_number": context.pull_request_number,
+            }
+        ) as span:
+            final_run = self._run_steps(context.model_dump(mode="json"))
+            span.set_attribute("autopr.final_state", final_run.state)
+            observe_run(final_run.run_type, final_run.state)
+            return final_run
 
 if __name__ == "__main__":
     import json

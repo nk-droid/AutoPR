@@ -11,6 +11,7 @@ from core.contracts.enums import PipelineStage
 from core.orchestrator.models import RunModel, StageResult, StageStatus
 from infra.repo_worker.git_utils import GitService
 
+from observability.tracing import traced, pipeline_step_attrs
 from core.orchestrator.steps.base import PipelineStep, StepRuntime
 
 class PublishStep(PipelineStep):
@@ -196,6 +197,7 @@ class PublishStep(PipelineStep):
 
         return git, temp_dir, True
 
+    @traced("pipeline.publish_step", attributes=pipeline_step_attrs)
     def execute(self, context: dict[str, Any], run: RunModel, runtime: StepRuntime) -> StageResult:
         repository = self._normalize_text(context.get("repository"))
         if not repository:

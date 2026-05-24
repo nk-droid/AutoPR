@@ -5,6 +5,8 @@ from core.contracts.review import ReviewCheck, ReviewOutput
 from core.contracts.run_context import PRToMergeContext
 from core.orchestrator.models import StageStatus
 
+from observability.tracing import traced, langgraph_node_attrs
+
 def _normalized_status(value: Any) -> str:
     if isinstance(value, StageStatus):
         return value.value
@@ -14,6 +16,11 @@ def _normalized_status(value: Any) -> str:
         return value.strip().lower()
     return ""
 
+
+@traced(
+    "review_step.evaluate_review",
+    attributes=langgraph_node_attrs("review", "evaluate_review"),
+)
 def evaluate_review(state: dict[str, Any]) -> dict[str, Any]:
     context = state.get("context")
     if not isinstance(context, PRToMergeContext):
@@ -140,6 +147,10 @@ def evaluate_review(state: dict[str, Any]) -> dict[str, Any]:
     }
     return state
 
+@traced(
+    "review_step.finalize",
+    attributes=langgraph_node_attrs("review", "finalize"),
+)
 def finalize(state: dict[str, Any]) -> dict[str, Any]:
     raw_checks = state.get("checks", [])
     checks = [item for item in raw_checks if isinstance(item, ReviewCheck)] if isinstance(raw_checks, list) else []

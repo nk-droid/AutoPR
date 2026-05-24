@@ -6,6 +6,7 @@ from core.orchestrator.models import RunModel, StageResult, StageStatus
 
 from infra.github.client import GitHubClient
 
+from observability.tracing import traced, pipeline_step_attrs
 from core.orchestrator.steps.base import PipelineStep, StepRuntime, is_success_status
 
 class MergeStep(PipelineStep):
@@ -15,6 +16,7 @@ class MergeStep(PipelineStep):
     def _normalize_text(value: Any) -> str:
         return value.strip() if isinstance(value, str) else ""
 
+    @traced("pipeline.merge_step", attributes=pipeline_step_attrs)
     def execute(self, context: dict[str, Any], run: RunModel, runtime: StepRuntime) -> StageResult:
         merge_decision = context.get("_merge_decision")
         # Respect upstream policy decision before calling merge API.

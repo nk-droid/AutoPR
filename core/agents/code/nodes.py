@@ -10,6 +10,8 @@ from infra.llm.chains import invoke_chain
 from infra.llm.client import create_client
 from infra.llm.prompts import load_prompt_catalog, require_prompt
 
+from observability.tracing import traced, langgraph_node_attrs
+
 client = create_client()
 _PROMPTS_PATH = Path(__file__).with_name("prompts.yaml")
 _PROMPTS = load_prompt_catalog(_PROMPTS_PATH)
@@ -147,6 +149,10 @@ def _block_state(
 
     return state
 
+@traced(
+    "code_step.understand_task",
+    attributes=langgraph_node_attrs("code", "understand_task"),
+)
 def understand_task(state: dict[str, Any]) -> dict[str, Any]:
     code_step = _resolve_code_step(state)
 
@@ -157,6 +163,10 @@ def understand_task(state: dict[str, Any]) -> dict[str, Any]:
 
     return state
 
+@traced(
+    "code_step.locate_files",
+    attributes=langgraph_node_attrs("code", "locate_files"),
+)
 def locate_files(state: dict[str, Any]) -> dict[str, Any]:
     code_step = _resolve_code_step(state)
 
@@ -189,6 +199,10 @@ def locate_files(state: dict[str, Any]) -> dict[str, Any]:
 
     return state
 
+@traced(
+    "code_step.generate_patch",
+    attributes=langgraph_node_attrs("code", "generate_patch"),
+)
 def generate_patch(state: dict[str, Any]) -> dict[str, Any]:
     code_step = _resolve_code_step(state)
 
@@ -323,6 +337,11 @@ def generate_patch(state: dict[str, Any]) -> dict[str, Any]:
 
     return state
 
+
+@traced(
+    "code_step.validate_patch",
+    attributes=langgraph_node_attrs("code", "validate_patch"),
+)
 def validate_patch(state: dict[str, Any]) -> dict[str, Any]:
     notes = dict(state.get("notes", {}))
 
@@ -455,6 +474,10 @@ def validate_patch(state: dict[str, Any]) -> dict[str, Any]:
 
     return state
 
+@traced(
+    "code_step.finalize",
+    attributes=langgraph_node_attrs("code", "finalize"),
+)
 def finalize(state: dict[str, Any]) -> dict[str, Any]:
     notes = dict(state.get("notes", {}))
 

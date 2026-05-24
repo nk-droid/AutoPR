@@ -5,6 +5,8 @@ from core.contracts.run_context import IssueToPRContext
 from core.orchestrator.models import StageStatus
 from infra.github.client import GitHubAPIError, GitHubClient
 
+from observability.tracing import traced, langgraph_node_attrs
+
 def _build_default_pr_title(context: IssueToPRContext, payload: dict[str, Any]) -> str:
     task_spec = payload.get("task_spec", {})
     problem = ""
@@ -117,6 +119,10 @@ def _build_pr_create_hints(exc: Exception) -> list[str]:
         )
     return hints
 
+@traced(
+    "pr_step.prepare_request",
+    attributes=langgraph_node_attrs("pr", "prepare_request"),
+)
 def prepare_request(state: dict[str, Any]) -> dict[str, Any]:
     context = state.get("context")
     if not isinstance(context, IssueToPRContext):
@@ -172,6 +178,10 @@ def prepare_request(state: dict[str, Any]) -> dict[str, Any]:
     state["status"] = StageStatus.OK
     return state
 
+@traced(
+    "pr_step.open_pr",
+    attributes=langgraph_node_attrs("pr", "open_pr"),
+)
 def open_pr(state: dict[str, Any]) -> dict[str, Any]:
     if state.get("status") != StageStatus.OK:
         return state
@@ -261,6 +271,11 @@ def open_pr(state: dict[str, Any]) -> dict[str, Any]:
     state["status"] = StageStatus.OK
     return state
 
+
+@traced(
+    "pr_step.finalize",
+    attributes=langgraph_node_attrs("pr", "finalize"),
+)
 def finalize(state: dict[str, Any]) -> dict[str, Any]:
     request = state.get("request")
     output = PROpenOutput(

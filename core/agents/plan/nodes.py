@@ -10,6 +10,8 @@ from infra.llm.chains import invoke_chain
 from infra.llm.client import create_client
 from infra.llm.prompts import load_prompt_catalog, require_prompt
 
+from observability.tracing import traced, langgraph_node_attrs
+
 client = create_client()
 _PROMPTS_PATH = Path(__file__).with_name("prompts.yaml")
 _PROMPTS = load_prompt_catalog(_PROMPTS_PATH)
@@ -54,6 +56,10 @@ def _as_plan_steps(values: Any) -> list[PlanStep]:
         return []
     return [item if isinstance(item, PlanStep) else PlanStep.model_validate(item) for item in values]
 
+@traced(
+    "plan_step.draft_plan",
+    attributes=langgraph_node_attrs("plan", "draft_plan"),
+)
 def draft_plan(state: dict[str, Any]) -> dict[str, Any]:
     triage_result = _as_triage_result(state.get("triage_result"))
     
@@ -84,6 +90,10 @@ def draft_plan(state: dict[str, Any]) -> dict[str, Any]:
     ]
     return state
 
+@traced(
+    "plan_step.map_dependencies",
+    attributes=langgraph_node_attrs("plan", "map_dependencies"),
+)
 def map_dependencies(state: dict[str, Any]) -> dict[str, Any]:
     plan_steps = _as_plan_steps(state.get("steps"))
     
@@ -115,6 +125,10 @@ def map_dependencies(state: dict[str, Any]) -> dict[str, Any]:
     ]
     return state
 
+@traced(
+    "plan_step.detect_ambiguity",
+    attributes=langgraph_node_attrs("plan", "detect_ambiguity"),
+)
 def detect_ambiguity(state: dict[str, Any]) -> dict[str, Any]:
     plan_steps = _as_plan_steps(state.get("steps"))
     current_status = state.get("status", PlanStatus.OK)
@@ -152,6 +166,10 @@ def detect_ambiguity(state: dict[str, Any]) -> dict[str, Any]:
     state["open_questions"] = merged_questions
     return state
 
+@traced(
+    "plan_step.finalize",
+    attributes=langgraph_node_attrs("plan", "finalize"),
+)
 def finalize(state: dict[str, Any]) -> dict[str, Any]:
     plan_steps = _as_plan_steps(state.get("steps"))
     assumptions = state.get("assumptions", [])

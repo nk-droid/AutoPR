@@ -24,6 +24,7 @@ services:
       - ../.env
 
     environment:
+      AUTOPR_SERVICE_NAME: autopr-api
       AUTOPR_REDIS_URL: redis://redis:6379/0
       AUTOPR_TRACE_EXPORTER: otlp
       OTEL_EXPORTER_OTLP_TRACES_ENDPOINT: tempo:4317
@@ -53,6 +54,7 @@ services:
       - ../.env
 
     environment:
+      AUTOPR_SERVICE_NAME: autopr-worker
       AUTOPR_REDIS_URL: redis://redis:6379/0
       AUTOPR_TRACE_EXPORTER: otlp
       OTEL_EXPORTER_OTLP_TRACES_ENDPOINT: tempo:4317
@@ -101,6 +103,8 @@ services:
     image: prom/prometheus:latest
     ports:
       - "9090:9090"
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml
     restart: unless-stopped
 
   postgres:

@@ -9,6 +9,8 @@ from core.orchestrator.models import StageStatus
 from infra.qa.aggregator import QAResultAggregator
 from infra.qa.models import CoverageResult, LintResult, SecurityResult, TestResult
 
+from observability.tracing import traced, langgraph_node_attrs
+
 _REQUIRED_TOOLS = ("lint", "tests", "coverage", "security")
 
 def _tail(text: str, max_chars: int = 1200) -> str:
@@ -81,6 +83,10 @@ def _as_security_result(result: ToolRunResult | None) -> SecurityResult:
     except Exception:
         return SecurityResult(success=False)
 
+@traced(
+    "qa_step.evaluate_inputs",
+    attributes=langgraph_node_attrs("qa", "evaluate_inputs"),
+)
 def evaluate_inputs(state: dict[str, Any]) -> dict[str, Any]:
     if not isinstance(state.get("coding_output"), CodeOutput):
         state["status"] = StageStatus.BLOCKED
@@ -101,6 +107,10 @@ def evaluate_inputs(state: dict[str, Any]) -> dict[str, Any]:
     state["status"] = StageStatus.OK
     return state
 
+@traced(
+    "qa_step.run_checks",
+    attributes=langgraph_node_attrs("qa", "run_checks"),
+)
 def run_checks(state: dict[str, Any]) -> dict[str, Any]:
     coding_output = state.get("coding_output")
     coding_step = state.get("coding_step")
@@ -180,6 +190,11 @@ def run_checks(state: dict[str, Any]) -> dict[str, Any]:
     }
     return state
 
+
+@traced(
+    "qa_step.finalize",
+    attributes=langgraph_node_attrs("qa", "finalize"),
+)
 def finalize(state: dict[str, Any]) -> dict[str, Any]:
     raw_checks = state.get("checks", [])
     checks = raw_checks if isinstance(raw_checks, list) and all(isinstance(item, QACheck) for item in raw_checks) else []

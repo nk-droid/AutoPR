@@ -5,6 +5,7 @@ from langchain_core.prompts import PromptTemplate
 from langchain_core.output_parsers import PydanticOutputParser
 
 from infra.llm.client import create_client
+from observability.tracing import traced, llm_chain_attrs
 
 ModelT = TypeVar("ModelT", bound=BaseModel)
 
@@ -20,6 +21,7 @@ def build_chain_parser(
     chain = prompt | (client or create_client()) | parser
     return chain, parser
 
+@traced("llm.invoke_chain", attributes=llm_chain_attrs)
 def invoke_chain(
     *,
     template: str,

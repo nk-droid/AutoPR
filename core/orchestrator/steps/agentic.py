@@ -26,6 +26,8 @@ from infra.ray.actors import (
     TestWorker
 )
 
+from observability.tracing import traced, pipeline_step_attrs, inject_trace_context
+
 def _stage_results(context: Dict[str, Any]) -> Dict[str, StageResult]:
     # Keep prior stage outputs in context so later steps can make policy decisions.
     value = context.get("_stage_results")
@@ -39,6 +41,7 @@ class TriageStep(PipelineStep):
     stage = PipelineStage.TRIAGE
     success_state = RunState.TRIAGED.value
 
+    @traced("pipeline.triage_step", attributes=pipeline_step_attrs)
     def execute(self, context: dict[str, Any], run: RunModel, runtime: StepRuntime) -> StageResult:
         issue_number = context.get("issue_number")
         repo = context.get("repository")
@@ -62,6 +65,7 @@ class PlanStep(PipelineStep):
     stage = PipelineStage.PLAN
     success_state = RunState.PLANNED.value
 
+    @traced("pipeline.plan_step", attributes=pipeline_step_attrs)
     def execute(self, context: dict[str, Any], run: RunModel, runtime: StepRuntime) -> StageResult:
         try:
             triage_result = TriageResult(
@@ -82,6 +86,7 @@ class CodeStep(PipelineStep):
     stage = PipelineStage.CODE
     success_state = RunState.CODING.value
 
+    @traced("pipeline.code_step", attributes=pipeline_step_attrs)
     def execute(self, context: dict[str, Any], run: RunModel, runtime: StepRuntime) -> StageResult:
         steps = context.get("steps", [])
         if not isinstance(steps, list) or not steps:
@@ -150,6 +155,7 @@ class QAStep(PipelineStep):
     stage = PipelineStage.QA
     success_state = RunState.QA_RUNNING.value
 
+    @traced("pipeline.qa_step", attributes=pipeline_step_attrs)
     def execute(self, context: dict[str, Any], run: RunModel, runtime: StepRuntime) -> StageResult:
         try:
             coding_output = CodeOutputModel(**context.get("coding_output", {}))
@@ -178,10 +184,12 @@ class QAStep(PipelineStep):
             qa_timeout_sec=timeout_sec,
             coverage_threshold=coverage_threshold,
         )
-        lint_ref = LintWorker.remote().run.remote(qa_payload)
-        test_ref = TestWorker.remote().run.remote(qa_payload)
-        coverage_ref = CoverageWorker.remote().run.remote(qa_payload)
-        security_ref = SecurityWorker.remote().run.remote(qa_payload)
+
+        trace_context = inject_trace_context()
+        lint_ref = LintWorker.remote().run.remote(qa_payload, trace_context=trace_context)
+        test_ref = TestWorker.remote().run.remote(qa_payload, trace_context=trace_context)
+        coverage_ref = CoverageWorker.remote().run.remote(qa_payload, trace_context=trace_context)
+        security_ref = SecurityWorker.remote().run.remote(qa_payload, trace_context=trace_context)
         refs = [lint_ref, test_ref, coverage_ref, security_ref]
         # Run QA tools in parallel, then cancel stragglers after timeout.
         _, pending = ray.wait(
@@ -220,6 +228,7 @@ class PROpenStep(PipelineStep):
     stage = PipelineStage.PR_OPEN
     success_state = RunState.PR_OPENED.value
 
+    @traced("pipeline.pr_open_step", attributes=pipeline_step_attrs)
     def execute(self, context: dict[str, Any], run: RunModel, runtime: StepRuntime) -> StageResult:
         results = _stage_results(context)
         qa_result = results.get(PipelineStage.QA.value) or results.get(PipelineStage.QA)
@@ -264,6 +273,7 @@ class ReviewStep(PipelineStep):
             return [(RunState.REVIEW_PENDING.value, "start merge workflow")]
         return []
 
+    @traced("pipeline.review_step", attributes=pipeline_step_attrs)
     def execute(self, context: dict[str, Any], run: RunModel, runtime: StepRuntime) -> StageResult:
         repository = context.get("repository") or run.repository
         pull_request_number = context.get("pull_request_number")

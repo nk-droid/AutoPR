@@ -7,6 +7,8 @@ from infra.llm.chains import invoke_chain
 from infra.llm.client import create_client
 from infra.llm.prompts import load_prompt_catalog, require_prompt
 
+from observability.tracing import traced, langgraph_node_attrs
+
 client = create_client()
 _PROMPTS_PATH = Path(__file__).with_name("prompts.yaml")
 _PROMPTS = load_prompt_catalog(_PROMPTS_PATH)
@@ -14,6 +16,10 @@ TASK_EXTRACTION_PROMPT = require_prompt(_PROMPTS, "task_extraction", source=_PRO
 RISK_ASSESSMENT_PROMPT = require_prompt(_PROMPTS, "risk_assessment", source=_PROMPTS_PATH)
 AMBIGUITY_DETECTION_PROMPT = require_prompt(_PROMPTS, "ambiguity_detection", source=_PROMPTS_PATH)
 
+@traced(
+    "triage_step.extract_task",
+    attributes=langgraph_node_attrs("triage", "extract_task"),
+)
 def extract_task(state: dict[str, Any]) -> dict[str, Any]:
     issue_value = state.get("issue")
     if isinstance(issue_value, TriageIssueInput):
@@ -33,6 +39,10 @@ def extract_task(state: dict[str, Any]) -> dict[str, Any]:
     state["task_spec"] = response
     return state
 
+@traced(
+    "triage_step.assess_risk",
+    attributes=langgraph_node_attrs("triage", "assess_risk"),
+)
 def assess_risk(state: dict[str, Any]) -> dict[str, Any]:
     task_spec_value = state.get("task_spec")
     task_spec = task_spec_value if isinstance(task_spec_value, TaskSpec) else TaskSpec.model_validate(task_spec_value)
@@ -56,6 +66,10 @@ def assess_risk(state: dict[str, Any]) -> dict[str, Any]:
     state["risk"] = response
     return state
 
+@traced(
+    "triage_step.detect_ambiguity",
+    attributes=langgraph_node_attrs("triage", "detect_ambiguity"),
+)
 def detect_ambiguity(state: dict[str, Any]) -> dict[str, Any]:
     task_spec_value = state.get("task_spec")
     risk_value = state.get("risk")
@@ -86,6 +100,10 @@ def detect_ambiguity(state: dict[str, Any]) -> dict[str, Any]:
     state["status"] = response.status
     return state
 
+@traced(
+    "triage_step.finalize",
+    attributes=langgraph_node_attrs("triage", "finalize"),
+)
 def finalize(state: dict[str, Any]) -> dict[str, Any]:
     task_spec_value = state.get("task_spec")
     risk_value = state.get("risk")
