@@ -60,3 +60,9 @@ class PRWorkerInput(BaseModel):
 
 class ReviewWorkerInput(BaseModel):
     context: PRToMergeContext
+
+class PublishWorkerInput(BaseModel):
+    context: dict[str, Any]
+
+class MergeWorkerInput(BaseModel):
+    context: dict[str, Any]
