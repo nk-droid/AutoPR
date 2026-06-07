@@ -1,3 +1,4 @@
+import os
 from typing import Any
 
 from core.contracts.enums import CheckStatus, GitHubMergeableState, GitHubPullRequestState
@@ -5,7 +6,18 @@ from core.contracts.review import ReviewCheck, ReviewOutput
 from core.contracts.run_context import PRToMergeContext
 from core.orchestrator.models import StageStatus
 
+from infra.github.client import GitHubClient
+
 from observability.tracing import traced, langgraph_node_attrs
+
+_UNKNOWN_MERGEABLE_STATE = "unknown"
+
+class MergeabilityUnknownError(Exception):
+    """Raised when a pull request's mergeability has not been computed yet.
+
+    Signals the review graph's retry policy to wait and re-evaluate, giving
+    GitHub time to resolve ``mergeable_state`` from ``unknown``.
+    """
 
 def _normalized_status(value: Any) -> str:
     if isinstance(value, StageStatus):
@@ -15,6 +27,28 @@ def _normalized_status(value: Any) -> str:
     if isinstance(value, str):
         return value.strip().lower()
     return ""
+
+def _fetch_live_mergeability(payload: dict[str, Any]) -> tuple[Any, Any] | None:
+    """Re-fetch the PR from GitHub and return ``(mergeable, mergeable_state)``.
+
+    Returns None when the lookup can't be performed or fails, so callers fall
+    back to whatever mergeability was already in the payload.
+    """
+    repository = payload.get("repository")
+    pull_request_number = payload.get("pull_request_number")
+    if not repository or not isinstance(pull_request_number, int) or pull_request_number <= 0:
+        return None
+
+    token = payload.get("github_token") or os.environ.get("GITHUB_TOKEN")
+    client = GitHubClient(token=token)
+    try:
+        pull_request = client.get_pull_request(repository, pull_request_number)
+    except Exception:
+        return None
+    finally:
+        client.close()
+
+    return pull_request.get("mergeable"), pull_request.get("mergeable_state")
 
 
 @traced(
@@ -31,6 +65,16 @@ def evaluate_review(state: dict[str, Any]) -> dict[str, Any]:
         return state
 
     payload = context.model_dump(mode="json")
+
+    if _normalized_status(payload.get("pull_request_mergeable_state")) in {"", _UNKNOWN_MERGEABLE_STATE}:
+        refreshed = _fetch_live_mergeability(payload)
+        if refreshed is not None:
+            mergeable, mergeable_state = refreshed
+            if mergeable is None or isinstance(mergeable, bool):
+                payload["pull_request_mergeable"] = mergeable
+            if mergeable_state is not None:
+                payload["pull_request_mergeable_state"] = mergeable_state
+
     qa_output = payload.get("qa_output", {})
     qa_status = ""
     if isinstance(qa_output, dict):
@@ -68,6 +112,16 @@ def evaluate_review(state: dict[str, Any]) -> dict[str, Any]:
     elif payload.get("pull_request_mergeable_state"):
         qa_check_status = CheckStatus.WARN
         qa_check_details = f"pull_request.mergeable_state={payload.get('pull_request_mergeable_state')}"
+
+    allow_unknown = bool(state.get("allow_unknown", False))
+    if (
+        not allow_unknown
+        and qa_check_status == CheckStatus.WARN
+        and _normalized_status(payload.get("pull_request_mergeable_state")) == _UNKNOWN_MERGEABLE_STATE
+    ):
+        raise MergeabilityUnknownError(
+            f"pull request #{payload.get('pull_request_number')} mergeability is still unknown"
+        )
 
     checks = [
         ReviewCheck(name="qa_or_mergeability_green", status=qa_check_status, details=qa_check_details),
@@ -161,4 +215,5 @@ def finalize(state: dict[str, Any]) -> dict[str, Any]:
         required_actions=required_actions if isinstance(required_actions, list) else [],
     )
     state["final_output"] = result.model_dump(mode="json")
+    print(f"Final review output: {state['final_output']}")
     return state
