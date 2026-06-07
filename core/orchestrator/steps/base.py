@@ -30,10 +30,6 @@ class StepRuntime(Protocol):
 
         worker_result_ref = worker.run.remote(*args)
         stage_status, worker_result = ray.get(worker_result_ref)
-        # stage_status = self._stage_status(worker_result)
-        # stage_status = self._stage_status(
-        #     worker_result if isinstance(worker_result, dict) else {}
-        # )
 
         return StageResult(
             stage = stage,

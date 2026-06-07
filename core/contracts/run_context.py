@@ -37,6 +37,8 @@ class CodeWorkerInput(BaseModel):
     step: PlanStep
     repo_map: str
     file_contents: dict[str, str]
+    dependency_files: dict[str, str] = {}
+    qa_feedback: str = ""
 
 class QAJobPayload(BaseModel):
     coding_output: CodeOutput

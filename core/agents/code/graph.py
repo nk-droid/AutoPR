@@ -9,6 +9,8 @@ class CodeState(TypedDict):
     step: PlanStep
     repo_map: str
     file_contents: Dict[str, str]
+    dependency_files: Dict[str, str]
+    qa_feedback: str
     target_files: List[str]
     files: Dict[str, str]
     status: PlanStatus

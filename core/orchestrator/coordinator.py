@@ -128,6 +128,34 @@ class Coordinator:
             if getattr(step, "stage", None) == stage:
                 return index
         return None
+
+    @staticmethod
+    def _format_qa_feedback(result: StageResult) -> str:
+        outputs = result.outputs if isinstance(result.outputs, dict) else {}
+        lines: list[str] = []
+
+        summary = outputs.get("summary")
+        if isinstance(summary, str) and summary.strip():
+            lines.append(summary.strip())
+
+        notes = outputs.get("notes")
+        if isinstance(notes, dict):
+            aggregate_summary = notes.get("aggregate_summary")
+            if isinstance(aggregate_summary, str) and aggregate_summary.strip():
+                lines.append(aggregate_summary.strip())
+
+        checks = outputs.get("checks")
+        if isinstance(checks, list):
+            for check in checks:
+                if not isinstance(check, dict):
+                    continue
+                status = str(check.get("status", "")).lower()
+                if status in {"fail", "warn"}:
+                    name = check.get("name", "check")
+                    details = check.get("details", "")
+                    lines.append(f"- {name} [{status}]: {details}")
+
+        return "\n".join(lines)
     
     def _create_review_request(
         self,
@@ -259,6 +287,7 @@ class Coordinator:
                 if can_retry_qa:
                     qa_retry_count += 1
                     context["qa_retry_count"] = qa_retry_count
+                    context["qa_feedback"] = self._format_qa_feedback(result)
 
                     retry_metadata = {
                         "qa_retry_count": qa_retry_count,

@@ -1,9 +1,14 @@
 from core.orchestrator.models import RunType
 
-from core.orchestrator.steps.agentic import CodeStep, PlanStep, PROpenStep, QAStep, ReviewStep, TriageStep
 from core.orchestrator.steps.base import PipelineStep
+from core.orchestrator.steps.code import CodeStep
 from core.orchestrator.steps.merge import MergeStep
+from core.orchestrator.steps.plan import PlanStep
+from core.orchestrator.steps.pr_open import PROpenStep
 from core.orchestrator.steps.publish import PublishStep
+from core.orchestrator.steps.qa import QAStep
+from core.orchestrator.steps.review import ReviewStep
+from core.orchestrator.steps.triage import TriageStep
 
 def steps_for_run_type(run_type: RunType) -> list[PipelineStep]:
     if run_type == RunType.ISSUE_TO_PR:
@@ -15,6 +20,8 @@ def steps_for_run_type(run_type: RunType) -> list[PipelineStep]:
             QAStep(),
             PublishStep(),
             PROpenStep(),
+            ReviewStep(),
+            MergeStep(),
         ]
     if run_type == RunType.PR_TO_MERGE:
         # Merge pipeline assumes PR already exists.

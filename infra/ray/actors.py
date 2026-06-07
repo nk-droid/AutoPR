@@ -47,7 +47,13 @@ class CodeWorker:
 
     @traced_remote("ray.code_worker", attributes=ray_worker_attrs)
     def run(self, payload: CodeWorkerInput, trace_context: dict[str, Any] | None = None):
-        return self.agent.run(payload.step, payload.repo_map, payload.file_contents)
+        return self.agent.run(
+            payload.step,
+            payload.repo_map,
+            payload.file_contents,
+            payload.dependency_files,
+            payload.qa_feedback,
+        )
 
 @ray.remote
 class LintWorker:
@@ -83,6 +89,15 @@ class QAWorker:
         return self.agent.run(payload.coding_output, payload.coding_step, payload.tool_results)
 
 @ray.remote
+class PublishWorker:
+    def __init__(self):
+        self.agent = PublishAgent()
+
+    @traced_remote("ray.publish_worker", attributes=ray_worker_attrs)
+    def run(self, payload: PublishWorkerInput, trace_context: dict[str, Any] | None = None):
+        return self.agent.run(payload.context)
+
+@ray.remote
 class PRWorker:
     def __init__(self):
         self.agent = PRAgent()
@@ -98,15 +113,6 @@ class ReviewWorker:
 
     @traced_remote("ray.review_worker", attributes=ray_worker_attrs)
     def run(self, payload: ReviewWorkerInput, trace_context: dict[str, Any] | None = None):
-        return self.agent.run(payload.context)
-
-@ray.remote
-class PublishWorker:
-    def __init__(self):
-        self.agent = PublishAgent()
-
-    @traced_remote("ray.publish_worker", attributes=ray_worker_attrs)
-    def run(self, payload: PublishWorkerInput, trace_context: dict[str, Any] | None = None):
         return self.agent.run(payload.context)
 
 @ray.remote

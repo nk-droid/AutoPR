@@ -1,5 +1,5 @@
 from typing import Any
-from core.contracts.enums import PipelineStage
+from core.contracts.enums import PipelineStage, RunState
 from core.contracts.run_context import PublishWorkerInput
 from core.orchestrator.models import RunModel, StageResult
 from core.orchestrator.steps.base import PipelineStep, StepRuntime
@@ -8,6 +8,7 @@ from observability.tracing import traced, pipeline_step_attrs
 
 class PublishStep(PipelineStep):
     stage = PipelineStage.PUBLISH
+    success_state = RunState.PUBLISHED.value
 
     @traced("pipeline.publish_step", attributes=pipeline_step_attrs)
     def execute(self, context: dict[str, Any], run: RunModel, runtime: StepRuntime) -> StageResult:

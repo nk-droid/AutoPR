@@ -131,6 +131,28 @@ def _build_file_context(
 
     return "\n\n".join(chunks)
 
+def _build_dependency_context(
+    dependency_files: dict[str, str],
+    *,
+    max_files: int = 10,
+    max_chars_per_file: int = 7000,
+) -> str:
+    if not dependency_files:
+        return ""
+
+    chunks: list[str] = []
+
+    for path, content in list(dependency_files.items())[:max_files]:
+        if not isinstance(path, str) or not isinstance(content, str):
+            continue
+
+        chunks.append(
+            f"### FILE: {path}\n"
+            f"{_truncate_text(content, max_chars_per_file)}"
+        )
+
+    return "\n\n".join(chunks)
+
 def _block_state(
     state: dict[str, Any],
     *,
@@ -211,6 +233,15 @@ def generate_patch(state: dict[str, Any]) -> dict[str, Any]:
         or "Implement planned changes"
     )
 
+    qa_feedback = state.get("qa_feedback", "")
+    if isinstance(qa_feedback, str) and qa_feedback.strip():
+        objective = (
+            f"{objective}\n\n"
+            "The previous attempt FAILED automated QA. Fix these issues "
+            "(do not reintroduce them):\n"
+            f"{qa_feedback.strip()}"
+        )
+
     raw_target_files = state.get("target_files", [])
 
     target_files = (
@@ -251,6 +282,20 @@ def generate_patch(state: dict[str, Any]) -> dict[str, Any]:
         file_contents,
     )
 
+    dependency_files_value = state.get("dependency_files", {})
+    dependency_files = (
+        dependency_files_value
+        if isinstance(dependency_files_value, dict)
+        else {}
+    )
+    dependency_context = _build_dependency_context(dependency_files)
+    if dependency_context:
+        file_context = (
+            f"{file_context}\n\n"
+            "## PREVIOUSLY GENERATED FILES (from dependency steps, for reference)\n"
+            f"{dependency_context}"
+        )
+
     try:
         response = invoke_chain(
             template=FILE_GENERATION_PROMPT.template,
@@ -271,6 +316,8 @@ def generate_patch(state: dict[str, Any]) -> dict[str, Any]:
                 ),
                 "file_context": file_context,
             },
+            agent="code_agent",
+            node="generate_patch",
             client=client,
             include_format_instructions=FILE_GENERATION_PROMPT.include_format_instructions,
         )
