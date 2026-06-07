@@ -9,6 +9,7 @@ from core.contracts.run_context import IssueToPRContext as PipelineIssueToPRCont
 from core.contracts.run_context import PRToMergeContext as PipelinePRToMergeContext
 from core.orchestrator.coordinator import Coordinator
 from core.orchestrator.models import IssueActions, RunModel, RunType
+from core.orchestrator.resume import resume_after_approval
 from infra.github.models import GitHubRepo, GitHubWebhookEventMetadata, IssuePayload, IssueToPRContext, PRReviewPayload, PRToMergeContext, WebhookDispatchResult, WebhookHandleResult
 
 ISSUE_RUN_COMMAND = re.compile(r"(?im)^/autopr\s+run\b")
@@ -209,6 +210,20 @@ def dispatch_webhook_job(job: Union[IssueToPRContext, PRToMergeContext]) -> Webh
         run_id=str(final_run.run_id),
         state=final_run.state,
         run_type=job.run_type.value,
+    )
+
+def dispatch_resume_job(resume_payload: dict[str, Any]) -> WebhookDispatchResult:
+    final_run = resume_after_approval(
+        request_id=str(resume_payload.get("request_id", "")),
+        run_id=str(resume_payload.get("run_id", "")),
+        stage_index=int(resume_payload.get("stage_index", 0)),
+        context=dict(resume_payload.get("context", {})),
+    )
+    return WebhookDispatchResult(
+        accepted=True,
+        run_id=str(final_run.run_id),
+        state=final_run.state,
+        run_type=final_run.run_type.value,
     )
 
 if __name__ == "__main__":
