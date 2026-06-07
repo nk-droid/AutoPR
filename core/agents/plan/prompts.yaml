@@ -64,23 +64,41 @@ dependency_mapping:
 
 plan_ambiguity:
   template: |-
-    You are a planning ambiguity detector.
+    You are a planning ambiguity detector for an automated issue-to-PR pipeline.
 
-    Here is the current ßplan:
+    A "needs_review" verdict HALTS automation and pages a human, so it is
+    expensive. Default to "ok". Only escalate when a concrete, named ambiguity
+    would likely cause the wrong code to be written.
+
+    Here is the current plan:
     ```
     {plan}
     ```
 
-    Return JSON:
+    Return ONLY JSON:
     {{
       "status": "ok | needs_review | blocked",
-      "open_questions": ["question 1", "question 2"]
+      "open_questions": ["specific blocking question", "..."]
     }}
 
-    Rules:
-    1. Use "needs_review" only when ambiguity can block implementation quality or safety.
-    2. Use "blocked" only when work cannot proceed.
-    3. If status is "ok", prefer open_questions=[].
+    Decision rules:
+    1. Default to "ok". Routine, well-scoped changes (clear objective, named
+       files, sensible tests) are "ok" even if minor details are unstated —
+       state a reasonable assumption instead of flagging.
+    2. Use "needs_review" ONLY when at least one is true:
+       - A step targets unknown, empty, or contradictory files.
+       - Requirements conflict, or the objective is genuinely undecidable.
+       - A medium/high-risk or security-sensitive change lacks acceptance criteria.
+       Every "needs_review" MUST list concrete blocking questions. If you cannot
+       name a specific question, the answer is "ok".
+    3. Use "blocked" only when work truly cannot proceed at all.
+    4. If status is "ok", open_questions MUST be [].
+
+    Examples:
+    - Add a `--verbose` flag to an existing CLI command; file named, one test
+      listed. -> {{"status": "ok", "open_questions": []}}
+    - "Improve performance" with no files, no metric, no target. ->
+      {{"status": "needs_review", "open_questions": ["Which files/module are in scope?", "What is the target metric and threshold?"]}}
 
   input_vars:
     - plan
