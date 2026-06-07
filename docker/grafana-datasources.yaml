@@ -8,6 +8,15 @@ datasources:
     uid: tempo
     isDefault: true
     editable: true
+    jsonData:
+      # Tempo's :3200 only serves HTTP; disable gRPC streaming search so Grafana
+      # uses the HTTP /api/search endpoint instead of failing on a gRPC dial.
+      streamingEnabled:
+        search: false
+      serviceMap:
+        datasourceUid: prometheus
+      tracesToMetrics:
+        datasourceUid: prometheus
 
   - name: Prometheus
     type: prometheus
@@ -15,3 +24,7 @@ datasources:
     url: http://prometheus:9090
     uid: prometheus
     editable: true
+    jsonData:
+      exemplarTraceIdDestinations:
+        - name: trace_id
+          datasourceUid: tempo

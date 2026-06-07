@@ -12,6 +12,8 @@ from opentelemetry.sdk.trace.export import BatchSpanProcessor, ConsoleSpanExport
 from opentelemetry.trace import Status, StatusCode
 from opentelemetry.util.types import AttributeValue
 
+from observability.metrics import flush_metrics
+
 SpanAttributes = Mapping[str, AttributeValue]
 AttributeFactory = Callable[..., SpanAttributes | None]
 
@@ -149,6 +151,7 @@ def traced_remote(
                         raise
             finally:
                 detach_trace_context(token)
+                flush_metrics()
 
         return sync_wrapper
 

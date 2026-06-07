@@ -4,12 +4,14 @@ from contextlib import asynccontextmanager
 from prometheus_client import make_asgi_app
 from observability.tracing import configure_tracing
 
+from infra.redis.webhook_queue import start_queue_depth_sampler
 from apps.api.routes.internal import router as internal_router
 from apps.api.routes.runs import router as runs_router
 from apps.api.routes.webhooks import get_webhook_queue, router as webhooks_router
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    start_queue_depth_sampler()
     try:
         yield
     finally:

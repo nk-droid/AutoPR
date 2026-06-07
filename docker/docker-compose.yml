@@ -27,7 +27,9 @@ services:
       AUTOPR_SERVICE_NAME: autopr-api
       AUTOPR_REDIS_URL: redis://redis:6379/0
       AUTOPR_TRACE_EXPORTER: otlp
-      OTEL_EXPORTER_OTLP_TRACES_ENDPOINT: tempo:4317
+      AUTOPR_METRICS_EXPORTER: otlp
+      OTEL_EXPORTER_OTLP_TRACES_ENDPOINT: otel-collector:4317
+      OTEL_EXPORTER_OTLP_METRICS_ENDPOINT: otel-collector:4317
       AUTOPR_DATABASE_URL: postgresql+psycopg://postgres:postgres@postgres:5432/postgres
       AUTOPR_DATABASE_ASYNC_URL: postgresql+asyncpg://postgres:postgres@postgres:5432/postgres
 
@@ -38,7 +40,7 @@ services:
     depends_on:
       redis:
         condition: service_healthy
-      tempo:
+      otel-collector:
         condition: service_started
       postgres:
         condition: service_healthy
@@ -57,7 +59,9 @@ services:
       AUTOPR_SERVICE_NAME: autopr-worker
       AUTOPR_REDIS_URL: redis://redis:6379/0
       AUTOPR_TRACE_EXPORTER: otlp
-      OTEL_EXPORTER_OTLP_TRACES_ENDPOINT: tempo:4317
+      AUTOPR_METRICS_EXPORTER: otlp
+      OTEL_EXPORTER_OTLP_TRACES_ENDPOINT: otel-collector:4317
+      OTEL_EXPORTER_OTLP_METRICS_ENDPOINT: otel-collector:4317
       AUTOPR_DATABASE_URL: postgresql+psycopg://postgres:postgres@postgres:5432/postgres
       AUTOPR_DATABASE_ASYNC_URL: postgresql+asyncpg://postgres:postgres@postgres:5432/postgres
 
@@ -67,7 +71,7 @@ services:
     depends_on:
       redis:
         condition: service_healthy
-      tempo:
+      otel-collector:
         condition: service_started
       postgres:
         condition: service_healthy
@@ -76,64 +80,118 @@ services:
 
   grafana:
     image: grafana/grafana:latest
+
     environment:
       GF_AUTH_ANONYMOUS_ENABLED: "true"
       GF_AUTH_ANONYMOUS_ORG_ROLE: Admin
+
     ports:
       - "3000:3000"
+
     volumes:
+      - grafana-storage:/var/lib/grafana
+      - ./grafana/provisioning/datasources:/etc/grafana/provisioning/datasources
+      - ./grafana/provisioning/dashboards:/etc/grafana/provisioning/dashboards
+      - ./grafana/dashboards:/var/lib/grafana/dashboards
       - ./grafana-datasources.yaml:/etc/grafana/provisioning/datasources/datasources.yaml
+    
     depends_on:
       - tempo
       - prometheus
+      - otel-collector
+
+    restart: unless-stopped
+
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:latest
+
+    command: ["--config=/etc/otel-collector.yaml"]
+
+    volumes:
+      - ./otel-collector.yaml:/etc/otel-collector.yaml
+
+    ports:
+      - "4317:4317"   # OTLP gRPC
+      - "4318:4318"   # OTLP HTTP
+      - "8889:8889"   # Prometheus exporter (scraped by Prometheus)
+    
+    depends_on:
+      - tempo
+    
     restart: unless-stopped
 
   tempo:
     image: grafana/tempo:latest
+
     command: ["-config.file=/etc/tempo.yaml"]
+
     volumes:
       - ./tempo.yaml:/etc/tempo.yaml
+
     ports:
       - "14317:4317"
       - "14318:4318"
       - "13200:3200"
+
+    depends_on:
+      - prometheus
+
     restart: unless-stopped
 
   prometheus:
     image: prom/prometheus:latest
+
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.path=/prometheus"
+      - "--web.enable-remote-write-receiver"
+      - "--enable-feature=exemplar-storage"
+
     ports:
       - "9090:9090"
+
     volumes:
       - ./prometheus.yml:/etc/prometheus/prometheus.yml
+
     restart: unless-stopped
 
   postgres:
     image: postgres:16-alpine
-    restart: unless-stopped
+
     ports:
       - "5432:5432"
+
     environment:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
       POSTGRES_DB: postgres
+
     volumes:
       - postgres_data:/var/lib/postgresql/data
+
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres"]
       interval: 5s
       timeout: 5s
       retries: 5
 
+    restart: unless-stopped
+
   pgadmin:
     image: dpage/pgadmin4:latest
+
     restart: unless-stopped
+
     ports:
       - "5050:80"
+
     environment:
       PGADMIN_DEFAULT_EMAIL: admin@autopr.com
       PGADMIN_DEFAULT_PASSWORD: admin
+
     volumes:
       - pgadmin_data:/var/lib/pgadmin
+      
     depends_on:
       - postgres
 
@@ -141,3 +199,4 @@ volumes:
   redis_data:
   postgres_data:
   pgadmin_data:
+  grafana-storage:

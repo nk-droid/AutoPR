@@ -1,0 +1,51 @@
+receivers:
+  # Traces pushed by the app (re-pointed from Tempo to here)
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+      http:
+        endpoint: 0.0.0.0:4318
+
+  # Scrape the apps' existing prometheus_client /metrics endpoints
+  prometheus:
+    config:
+      scrape_configs:
+        - job_name: autopr-api
+          metrics_path: /metrics
+          static_configs:
+            - targets: ["api:8000"]
+        - job_name: autopr-worker
+          static_configs:
+            - targets: ["worker:9000"]
+
+processors:
+  batch: {}
+
+exporters:
+  # Traces -> Tempo (collector now sits in front of Tempo)
+  otlp/tempo:
+    endpoint: tempo:4317
+    tls:
+      insecure: true
+
+  # Metrics -> exposed for Prometheus to scrape at :8889/metrics
+  prometheus:
+    endpoint: 0.0.0.0:8889
+    # keep service.name/instance as labels so dashboards can group by service
+    resource_to_telemetry_conversion:
+      enabled: true
+    # Ray actors push once then die; keep their series exposed long enough to
+    # stay visible between runs (default is 5m, which makes them disappear).
+    metric_expiration: 60m
+
+service:
+  pipelines:
+    traces:
+      receivers: [otlp]
+      processors: [batch]
+      exporters: [otlp/tempo]
+    metrics:
+      receivers: [prometheus, otlp]
+      processors: [batch]
+      exporters: [prometheus]
