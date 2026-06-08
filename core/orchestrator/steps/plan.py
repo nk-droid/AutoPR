@@ -30,4 +30,12 @@ class PlanStep(PipelineStep):
                 notes={"reason": f"Plan blocked: invalid triage output ({exc})."},
             )
         
-        return runtime.run_worker(self.stage, PlanWorker.remote(), PlanWorkerInput(triage_result=triage_result))
+        repo_map = context.get("repo_map", "")
+        if not isinstance(repo_map, str):
+            repo_map = ""
+
+        return runtime.run_worker(
+            self.stage,
+            PlanWorker.remote(),
+            PlanWorkerInput(triage_result=triage_result, repo_map=repo_map),
+        )

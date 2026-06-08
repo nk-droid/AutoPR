@@ -38,7 +38,7 @@ class PlanWorker:
 
     @traced_remote("ray.plan_worker", attributes=ray_worker_attrs)
     def run(self, payload: PlanWorkerInput, trace_context: dict[str, Any] | None = None):
-        return self.agent.run(payload.triage_result)
+        return self.agent.run(payload.triage_result, payload.repo_map)
 
 @ray.remote
 class CodeWorker:

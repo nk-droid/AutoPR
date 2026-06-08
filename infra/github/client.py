@@ -1,5 +1,6 @@
 from typing import Any
 import httpx
+from core.contracts.enums import GitHubIssueSort, GitHubIssueState, GitHubSortDirection
 from infra.github.auth import resolve_github_token, resolve_optional_github_token
 
 class GitHubAPIError(RuntimeError):
@@ -20,12 +21,15 @@ class GitHubAPIError(RuntimeError):
         self.message = message
         self.response_payload = response_payload
 
+def _as_text(value: Any) -> str:
+    return value.strip() if isinstance(value, str) else ""
+
 def _stringify_error_item(item: Any) -> str:
     if isinstance(item, dict):
-        message = str(item.get("message", "")).strip()
-        resource = str(item.get("resource", "")).strip()
-        field = str(item.get("field", "")).strip()
-        code = str(item.get("code", "")).strip()
+        message = _as_text(item.get("message"))
+        resource = _as_text(item.get("resource"))
+        field = _as_text(item.get("field"))
+        code = _as_text(item.get("code"))
         parts = [part for part in [resource, field, code] if part]
         prefix = "/".join(parts)
         if prefix and message:
@@ -39,7 +43,7 @@ def _stringify_error_item(item: Any) -> str:
 
 def _extract_error_details(payload: Any) -> str:
     if isinstance(payload, dict):
-        message = str(payload.get("message", "")).strip()
+        message = _as_text(payload.get("message"))
         errors = payload.get("errors")
         errors_text: list[str] = []
         if isinstance(errors, list):
@@ -52,7 +56,7 @@ def _extract_error_details(payload: Any) -> str:
             details.append(message)
         if errors_text:
             details.append("; ".join(errors_text))
-        documentation_url = str(payload.get("documentation_url", "")).strip()
+        documentation_url = _as_text(payload.get("documentation_url"))
         if documentation_url:
             details.append(f"docs: {documentation_url}")
         if details:
@@ -128,19 +132,19 @@ class GitHubClient:
         self,
         repo: str,
         *,
-        state: str = "open",
+        state: GitHubIssueState | str = GitHubIssueState.OPEN,
         labels: str | None = None,
         per_page: int = 30,
         page: int = 1,
-        sort: str = "created",
-        direction: str = "asc",
+        sort: GitHubIssueSort | str = GitHubIssueSort.CREATED,
+        direction: GitHubSortDirection | str = GitHubSortDirection.ASC,
     ) -> list[dict]:
         query: dict[str, Any] = {
-            "state": state,
+            "state": GitHubIssueState(state).value,
             "per_page": per_page,
             "page": page,
-            "sort": sort,
-            "direction": direction,
+            "sort": GitHubIssueSort(sort).value,
+            "direction": GitHubSortDirection(direction).value,
         }
         if labels:
             query["labels"] = labels

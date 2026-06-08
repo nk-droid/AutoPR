@@ -11,6 +11,7 @@ from core.orchestrator.models import RunModel, StageResult, StageStatus
 from core.orchestrator.steps.base import PipelineStep, StepRuntime, is_success_status
 
 from infra.ray.actors import CodeWorker
+from infra.repo_worker.workspace import read_target_files
 
 from observability.tracing import inject_trace_context, pipeline_step_attrs, traced
 
@@ -136,6 +137,17 @@ class CodeStep(PipelineStep):
             if not isinstance(path, str) or not isinstance(content, str):
                 continue
             typed_file_contents[path] = content
+
+        # Load existing contents of the planned target files from the checkout so the
+        # code agent edits real files instead of regenerating them blind.
+        repo_path = context.get("repo_path")
+        if isinstance(repo_path, str) and repo_path:
+            targets: list[str] = []
+            for plan_step in plan_steps:
+                targets.extend(plan_step.files)
+                targets.extend(plan_step.tests)
+            for path, content in read_target_files(repo_path, targets).items():
+                typed_file_contents.setdefault(path, content)
 
         qa_feedback = context.get("qa_feedback", "")
         if not isinstance(qa_feedback, str):

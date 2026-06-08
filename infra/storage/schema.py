@@ -71,8 +71,19 @@ review_requests = Table(
     Column("updated_at", DateTime, server_default=func.now(), onupdate=func.now()),
 )
 
-# Initialize database
+from sqlalchemy import text
 from infra.storage.engine import get_engine
 
+# Stable key for the advisory lock guarding concurrent schema creation.
+_SCHEMA_INIT_LOCK_KEY = 0x4155544F5052  # "AUTOPR"
+
+def _init_schema(target_engine) -> None:
+    if target_engine.dialect.name == "postgresql":
+        with target_engine.begin() as conn:
+            conn.execute(text("SELECT pg_advisory_xact_lock(:key)"), {"key": _SCHEMA_INIT_LOCK_KEY})
+            metadata.create_all(conn, checkfirst=True)
+    else:
+        metadata.create_all(target_engine, checkfirst=True)
+
 engine = get_engine()
-metadata.create_all(engine)
+_init_schema(engine)

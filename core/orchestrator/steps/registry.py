@@ -5,6 +5,7 @@ from core.orchestrator.steps.code import CodeStep
 from core.orchestrator.steps.merge import MergeStep
 from core.orchestrator.steps.plan import PlanStep
 from core.orchestrator.steps.pr_open import PROpenStep
+from core.orchestrator.steps.prepare import PrepareStep
 from core.orchestrator.steps.publish import PublishStep
 from core.orchestrator.steps.qa import QAStep
 from core.orchestrator.steps.review import ReviewStep
@@ -15,6 +16,7 @@ def steps_for_run_type(run_type: RunType) -> list[PipelineStep]:
         # Ordered pipeline from intake to PR open.
         return [
             TriageStep(),
+            PrepareStep(),
             PlanStep(),
             CodeStep(),
             QAStep(),

@@ -7,10 +7,11 @@ class PlanAgent:
     def __init__(self):
         self.graph = build_plan_graph(nodes)
 
-    def run(self, triage_result: TriageResult):
+    def run(self, triage_result: TriageResult, repo_map: str = ""):
         result = self.graph.invoke(
             {
                 "triage_result": triage_result,
+                "repo_map": repo_map,
                 "strategy": "",
                 "steps": [],
                 "assumptions": [],

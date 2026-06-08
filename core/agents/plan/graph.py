@@ -10,6 +10,7 @@ from langchain_core.exceptions import OutputParserException
 
 class PlanState(TypedDict):
     triage_result: TriageResult
+    repo_map: str
     strategy: str
     steps: list[PlanStep]
     assumptions: list[str]

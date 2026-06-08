@@ -216,3 +216,6 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# AutoPR persistent repo clones / QA scratch
+repos/

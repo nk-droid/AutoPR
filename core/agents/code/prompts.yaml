@@ -1,41 +1,63 @@
 file_generation:
   template: |-
-    You are implementing one coding step. Generate the full resulting content for each changed file.
+    You are implementing one step of an automated coding pipeline. Output the full
+    final content of each changed file so the objective is met AND the change passes
+    automated QA.
+
+    Your output is run through automated QA and MUST pass every check:
+    - tests: pytest must pass for the planned tests and any tests you add
+    - lint: ruff must pass — no unused imports, no undefined names, valid syntax
+    - coverage: the tests must actually execute the code you write
+    - security: no insecure patterns (bandit) — no eval/exec of untrusted input,
+      no hardcoded secrets, no shell=True with untrusted data
 
     Objective:
     {objective}
 
-    Target files:
+    Previous QA failures to fix (do not reintroduce them):
+    {qa_feedback}
+
+    Target files (you may ONLY return paths from this list):
     {target_files}
 
     Planned tests:
     {tests}
 
-    Repository map:
+    Repository map (use these real module paths for imports):
     {repo_map}
 
     Existing file contents:
     {file_context}
 
-    Return JSON only. For each file you output:
-    1. path: relative file path
-    2. content: full file content after applying changes
+    Return JSON only. You MUST return at least one file — an empty "files" list is a
+    failure and discards all of your work. For each file you output:
+    1. path: a path copied EXACTLY (character-for-character) from the Target files list
+       above — same spelling and case, no leading "./", no added, renamed, or dropped
+       directories. A path that does not exactly match a target is silently discarded.
+    2. content: the COMPLETE final file content after your changes
 
     Rules:
-    1. Only return files relevant to this step.
-    2. content must be complete file contents, not a patch or snippet.
-    3. If a target file does not exist in context, create full content from scratch.
-    4. Keep output deterministic and concise.
-    5. If target files include tests, generate those test files too.
+    1. Only return files whose path exactly matches an entry in the Target files list;
+       never invent new paths and never return an empty list.
+    2. content must be the entire file — not a patch, diff, or snippet — and never truncated.
+    3. If a target file is absent from the existing contents, create it in full.
+    4. Use correct imports based on the repository map; do not reference names you do
+       not define and that do not exist in the repo.
+    5. Implementation and tests must be internally consistent: the planned tests and any
+       tests you write must pass against the code you return in this same response.
+    6. If target files include tests, write real runnable tests that import the code
+       under test and assert its behaviour, covering the main paths.
+    7. Preserve unrelated existing behaviour in files you modify.
 
     {format_instructions}
 
   input_vars:
     - objective
+    - qa_feedback
     - target_files
     - tests
     - repo_map
     - file_context
     - format_instructions
-    
+
   include_format_instructions: true
