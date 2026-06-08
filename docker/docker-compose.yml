@@ -95,7 +95,6 @@ services:
       - ./grafana/provisioning/datasources:/etc/grafana/provisioning/datasources
       - ./grafana/provisioning/dashboards:/etc/grafana/provisioning/dashboards
       - ./grafana/dashboards:/var/lib/grafana/dashboards
-      - ./grafana-datasources.yaml:/etc/grafana/provisioning/datasources/datasources.yaml
     
     depends_on:
       - tempo
