@@ -15,10 +15,6 @@ from infra.storage.review_requests import (
 
 router = APIRouter(prefix="/internal", tags=["internal"])
 
-@router.post("/agent-result")
-def agent_result() -> dict:
-    return {"status": "ok"}
-
 def _comment_on_disapproved_review(context: dict[str, Any]) -> str:
     repository = context.get("repository")
     pull_request_number = context.get("pull_request_number")
