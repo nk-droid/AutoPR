@@ -176,6 +176,23 @@ class Coordinator:
             "review_approved": bool(context.get("review_approved", False)),
             "_resume_stage_index": int(step_index),
         }
+        for key in (
+            "review_request_kind",
+            "llm_review",
+            "merge_risk",
+            "confidence",
+            "blocking_findings",
+            "risk",
+            "steps",
+            "coding_output",
+            "qa_output",
+            "changed_files",
+            "policy_public_findings",
+            "policy_decision",
+        ):
+            value = context.get(key)
+            if value is not None:
+                review_context[key] = value
 
         review_request = create_review_request(
             run_id=str(self.run.run_id),
@@ -269,7 +286,13 @@ class Coordinator:
             for next_state, reason in step.after(result, context, self.run):
                 self.transition_to(next_state, reason=reason or str(step.stage.value))
 
-            if getattr(step, "stage", None) == PipelineStage.PUBLISH and result.status == StageStatus.NEEDS_REVIEW:
+            if (
+                result.status == StageStatus.NEEDS_REVIEW
+                and (
+                    getattr(step, "stage", None) == PipelineStage.PUBLISH
+                    or result.notes.get("review_request_kind") == "llm_soft_gate"
+                )
+            ):
                 self._create_review_request(
                     step_index=step_index,
                     result=result,

@@ -16,6 +16,7 @@ class ReviewAgent:
             "checks": [],
             "required_actions": [],
             "notes": {},
+            "llm_review": None,
             "final_output": {},
             "allow_unknown": allow_unknown,
         }

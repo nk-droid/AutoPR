@@ -1,16 +1,24 @@
 import os
+from pathlib import Path
 from typing import Any
 
 from core.contracts.enums import CheckStatus, GitHubMergeableState, GitHubPullRequestState
-from core.contracts.review import ReviewCheck, ReviewOutput
+from core.contracts.review import LLMBlockingFinding, LLMMergeRiskReview, ReviewCheck, ReviewOutput
 from core.contracts.run_context import PRToMergeContext
 from core.orchestrator.models import StageStatus
 
 from infra.github.client import GitHubClient
+from infra.llm.chains import invoke_chain
+from infra.llm.client import create_client
+from infra.llm.prompts import load_prompt_catalog, require_prompt
 
 from observability.tracing import traced, langgraph_node_attrs
 
 _UNKNOWN_MERGEABLE_STATE = "unknown"
+_PROMPTS_PATH = Path(__file__).with_name("prompts.yaml")
+_PROMPTS = load_prompt_catalog(_PROMPTS_PATH)
+LLM_MERGE_RISK_REVIEW_PROMPT = require_prompt(_PROMPTS, "llm_merge_risk_review", source=_PROMPTS_PATH)
+llm_client = create_client()
 
 class MergeabilityUnknownError(Exception):
     """Raised when a pull request's mergeability has not been computed yet.
@@ -201,6 +209,73 @@ def evaluate_review(state: dict[str, Any]) -> dict[str, Any]:
     }
     return state
 
+def _review_payload(context: PRToMergeContext) -> dict[str, Any]:
+    return context.model_dump(mode="json")
+
+def _pipeline_context(payload: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "risk": payload.get("risk", {}),
+        "steps": payload.get("steps", []),
+        "qa_output": payload.get("qa_output", {}),
+        "policy_public_findings": payload.get("policy_public_findings", []),
+        "review_approved": payload.get("review_approved", False),
+    }
+
+@traced(
+    "review_step.llm_merge_risk_review",
+    attributes=langgraph_node_attrs("review", "llm_merge_risk_review"),
+)
+def llm_merge_risk_review(state: dict[str, Any]) -> dict[str, Any]:
+    if state.get("status") != StageStatus.OK:
+        return state
+
+    context = state.get("context")
+    if not isinstance(context, PRToMergeContext):
+        return state
+
+    payload = _review_payload(context)
+    if bool(payload.get("llm_soft_gate_approved", False)):
+        return state
+
+    try:
+        review = invoke_chain(
+            template=LLM_MERGE_RISK_REVIEW_PROMPT.template,
+            input_vars=LLM_MERGE_RISK_REVIEW_PROMPT.input_vars,
+            output_model=LLMMergeRiskReview,
+            variables={
+                "pr_context": {
+                    "repository": payload.get("repository", ""),
+                    "pull_request_number": payload.get("pull_request_number", ""),
+                    "pull_request_state": payload.get("pull_request_state", ""),
+                    "pull_request_draft": payload.get("pull_request_draft", False),
+                    "pull_request_mergeable_state": payload.get("pull_request_mergeable_state", ""),
+                },
+                "changed_files": payload.get("changed_files", []),
+                "pipeline_context": _pipeline_context(payload),
+            },
+            agent="review_agent",
+            node="llm_merge_risk_review",
+            client=llm_client,
+            include_format_instructions=LLM_MERGE_RISK_REVIEW_PROMPT.include_format_instructions,
+        )
+    except Exception:
+        review = LLMMergeRiskReview(
+            merge_risk="medium",
+            confidence="low",
+            summary="Manual review is recommended because automated merge-risk review could not complete.",
+            blocking_findings=[
+                LLMBlockingFinding(
+                    severity="medium",
+                    category="review_unavailable",
+                    summary="Automated merge-risk review could not complete.",
+                    suggested_fix="Have a reviewer inspect the pull request before merging.",
+                )
+            ],
+        )
+
+    state["llm_review"] = review
+    return state
+
 @traced(
     "review_step.finalize",
     attributes=langgraph_node_attrs("review", "finalize"),
@@ -209,10 +284,20 @@ def finalize(state: dict[str, Any]) -> dict[str, Any]:
     raw_checks = state.get("checks", [])
     checks = [item for item in raw_checks if isinstance(item, ReviewCheck)] if isinstance(raw_checks, list) else []
     required_actions = state.get("required_actions", [])
+    llm_review_value = state.get("llm_review")
+    llm_review: LLMMergeRiskReview | None = None
+    if isinstance(llm_review_value, LLMMergeRiskReview):
+        llm_review = llm_review_value
+    elif isinstance(llm_review_value, dict):
+        try:
+            llm_review = LLMMergeRiskReview.model_validate(llm_review_value)
+        except Exception:
+            llm_review = None
     result = ReviewOutput(
         summary=state.get("summary", ""),
         checks=checks,
         required_actions=required_actions if isinstance(required_actions, list) else [],
+        llm_review=llm_review,
     )
     state["final_output"] = result.model_dump(mode="json")
     print(f"Final review output: {state['final_output']}")
