@@ -1,16 +1,23 @@
 from typing import Any
 from urllib.parse import urlparse
+from core.contracts.enums import (
+    GitHubIssuePickStrategy,
+    GitHubIssueSort,
+    GitHubIssueState,
+    GitHubPathSegment,
+    GitHubSortDirection,
+)
 from infra.github.client import GitHubClient
 
 def get_issues(
     repo: str,
     *,
-    state: str = "open",
+    state: GitHubIssueState | str = GitHubIssueState.OPEN,
     labels: str | None = None,
     per_page: int = 30,
     page: int = 1,
-    sort: str = "created",
-    direction: str = "asc",
+    sort: GitHubIssueSort | str = GitHubIssueSort.CREATED,
+    direction: GitHubSortDirection | str = GitHubSortDirection.ASC,
     token: str | None = None,
 ) -> list[dict]:
     client = GitHubClient(token=token)
@@ -36,7 +43,7 @@ def resolve_issue_reference(issue_reference: str | int, repo: str | None = None)
     if reference.startswith("http://") or reference.startswith("https://"):
         parsed = urlparse(reference)
         path_parts = [part for part in parsed.path.split("/") if part]
-        if len(path_parts) < 4 or path_parts[2] != "issues":
+        if len(path_parts) < 4 or path_parts[2] != GitHubPathSegment.ISSUES.value:
             raise ValueError(f"Unsupported GitHub issue URL format: {issue_reference}")
         owner = path_parts[0]
         repo_name = path_parts[1]
@@ -88,26 +95,40 @@ def _issue_sort_key(issue: dict[str, Any], field: str) -> str:
         return value
     return ""
 
-def pick_issue(issues: list[dict], *, strategy: str = "oldest_open") -> dict:
+def _comment_count(issue: dict[str, Any]) -> int:
+    value = issue.get("comments")
+    if isinstance(value, int) and not isinstance(value, bool):
+        return value
+    return 0
+
+def pick_issue(
+    issues: list[dict],
+    *,
+    strategy: GitHubIssuePickStrategy | str = GitHubIssuePickStrategy.OLDEST_OPEN,
+) -> dict:
     if not issues:
         raise ValueError("No issues available to pick from")
-    if strategy == "oldest_open":
+    try:
+        strategy_enum = GitHubIssuePickStrategy(strategy)
+    except ValueError as exc:
+        raise ValueError(f"Unknown issue pick strategy: {strategy}") from exc
+    if strategy_enum == GitHubIssuePickStrategy.OLDEST_OPEN:
         return sorted(issues, key=lambda issue: _issue_sort_key(issue, "created_at"))[0]
-    if strategy == "newest_open":
+    if strategy_enum == GitHubIssuePickStrategy.NEWEST_OPEN:
         return sorted(issues, key=lambda issue: _issue_sort_key(issue, "created_at"), reverse=True)[0]
-    if strategy == "least_comments":
+    if strategy_enum == GitHubIssuePickStrategy.LEAST_COMMENTS:
         return sorted(
             issues,
             key=lambda issue: (
-                int(issue.get("comments", 0)),
+                _comment_count(issue),
                 _issue_sort_key(issue, "created_at"),
             ),
         )[0]
-    if strategy == "most_comments":
+    if strategy_enum == GitHubIssuePickStrategy.MOST_COMMENTS:
         return sorted(
             issues,
             key=lambda issue: (
-                int(issue.get("comments", 0)),
+                _comment_count(issue),
                 _issue_sort_key(issue, "created_at"),
             ),
             reverse=True,
@@ -117,8 +138,8 @@ def pick_issue(issues: list[dict], *, strategy: str = "oldest_open") -> dict:
 def get_and_pick_issue(
     repo: str,
     *,
-    strategy: str = "oldest_open",
-    state: str = "open",
+    strategy: GitHubIssuePickStrategy | str = GitHubIssuePickStrategy.OLDEST_OPEN,
+    state: GitHubIssueState | str = GitHubIssueState.OPEN,
     labels: str | None = None,
     per_page: int = 30,
     page: int = 1,
