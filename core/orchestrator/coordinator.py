@@ -261,12 +261,6 @@ class Coordinator:
             for next_state, reason in step.before(context, self.run):
                 self.transition_to(next_state, reason=reason)
 
-            # FIXME: move to before function in QAStep
-            if step.stage == PipelineStage.QA and self.run.state != RunState.QA_RUNNING.value:
-                self.transition_to(RunState.QA_RUNNING.value, reason="qa started")
-
-            # result = self.add_stage_result(step.execute(context, self.run, self))
-
             started_at = time.perf_counter()
             result = step.execute(context, self.run, self)
             observe_stage(

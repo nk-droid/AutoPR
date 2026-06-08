@@ -17,6 +17,11 @@ class QAStep(PipelineStep):
     stage = PipelineStage.QA
     success_state = RunState.QA_RUNNING.value
 
+    def before(self, context: dict[str, Any], run: RunModel) -> list[tuple[str, str]]:
+        if run.state != RunState.QA_RUNNING.value:
+            return [(RunState.QA_RUNNING.value, "qa started")]
+        return []
+
     @traced("pipeline.qa_step", attributes=pipeline_step_attrs)
     def execute(self, context: dict[str, Any], run: RunModel, runtime: StepRuntime) -> StageResult:
         try:
