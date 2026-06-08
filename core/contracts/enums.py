@@ -3,6 +3,7 @@ from enum import Enum
 class PipelineStage(str, Enum):
     TRIAGE = "triage"
     PLAN = "plan"
+    PREPARE = "prepare"
     CODE = "code"
     QA = "qa"
     PUBLISH = "publish"

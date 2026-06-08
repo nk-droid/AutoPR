@@ -32,6 +32,7 @@ class TriageWorkerInput(BaseModel):
 
 class PlanWorkerInput(BaseModel):
     triage_result: TriageResult
+    repo_map: str = ""
 
 class CodeWorkerInput(BaseModel):
     step: PlanStep

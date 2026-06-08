@@ -11,6 +11,13 @@ plan_draft:
     {triage_result}
     ```
 
+    Existing repository files (relative paths). Reuse these real paths whenever the
+    change belongs in an existing file; only introduce a new path when nothing
+    suitable exists:
+    ```
+    {repo_map}
+    ```
+
     Return ONLY a JSON object with this shape:
     {{
       "status": "ok | needs_review | blocked",
@@ -33,11 +40,16 @@ plan_draft:
     Rules:
     1. Do not return markdown, code fences, function definitions, or JSON schema objects.
     2. Do not return keys like `properties`, `type`, `items`, `definitions`, `parameters`, or `function`.
-    3. Keep steps ordered and independently actionable.
-    4. If target files are unknown, set `status=needs_review` and include open questions.
-  
+    3. Keep steps ordered and independently actionable. At least one step must be always present;
+       an empty "steps" list is a failure.
+    4. Prefer existing file paths from the repository files list above; match the repo's
+       layout (e.g. a module under `src/` stays under `src/`). Place tests where the repo
+       already keeps them.
+    5. If target files are unknown, set `status=needs_review` and include open questions.
+
   input_vars:
     - triage_result
+    - repo_map
 
 dependency_mapping:
   template: |-

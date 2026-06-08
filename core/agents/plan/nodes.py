@@ -62,12 +62,22 @@ def _as_plan_steps(values: Any) -> list[PlanStep]:
 )
 def draft_plan(state: dict[str, Any]) -> dict[str, Any]:
     triage_result = _as_triage_result(state.get("triage_result"))
-    
+
+    repo_map_value = state.get("repo_map", "")
+    repo_map = repo_map_value if isinstance(repo_map_value, str) and repo_map_value.strip() else ""
+
     response = invoke_chain(
         template=PLAN_DRAFT_PROMPT.template,
         input_vars=PLAN_DRAFT_PROMPT.input_vars,
         output_model=DraftPlanModel,
-        variables={"triage_result": triage_result.model_dump(mode="json")},
+        variables={
+            "triage_result": triage_result.model_dump(mode="json"),
+            "repo_map": (
+                repo_map[:12000] if repo_map else "No repository files provided."
+            ),
+        },
+        agent="plan_agent",
+        node="draft_plan",
         client=client,
         include_format_instructions=PLAN_DRAFT_PROMPT.include_format_instructions,
     )
@@ -102,6 +112,8 @@ def map_dependencies(state: dict[str, Any]) -> dict[str, Any]:
         input_vars=DEPENDENCY_MAPPING_PROMPT.input_vars,
         output_model=DependencyMapModel,
         variables={"steps": [step.model_dump(mode="json") for step in plan_steps]},
+        agent="plan_agent",
+        node="map_dependencies",
         client=client,
         include_format_instructions=DEPENDENCY_MAPPING_PROMPT.include_format_instructions,
     )
@@ -148,6 +160,8 @@ def detect_ambiguity(state: dict[str, Any]) -> dict[str, Any]:
                 "steps": [step.model_dump(mode="json") for step in plan_steps],
             }
         },
+        agent="plan_agent",
+        node="detect_ambiguity",
         client=client,
         include_format_instructions=PLAN_AMBIGUITY_PROMPT.include_format_instructions,
     )

@@ -32,6 +32,8 @@ def extract_task(state: dict[str, Any]) -> dict[str, Any]:
         input_vars=TASK_EXTRACTION_PROMPT.input_vars,
         output_model=TaskSpec,
         variables={"issue": f"{issue.title}\n{issue.body}"},
+        agent="triage_agent",
+        node="extract_task",
         client=client,
         include_format_instructions=TASK_EXTRACTION_PROMPT.include_format_instructions,
     )
@@ -59,6 +61,8 @@ def assess_risk(state: dict[str, Any]) -> dict[str, Any]:
                 f"Out of Scope: {', '.join(task_spec.out_of_scope)}"
             )
         },
+        agent="triage_agent",
+        node="assess_risk",
         client=client,
         include_format_instructions=RISK_ASSESSMENT_PROMPT.include_format_instructions,
     )
@@ -92,6 +96,8 @@ def detect_ambiguity(state: dict[str, Any]) -> dict[str, Any]:
                 f"Reasons: {', '.join(risk.reasons)}"
             ),
         },
+        agent="triage_agent",
+        node="detect_ambiguity",
         client=client,
         include_format_instructions=AMBIGUITY_DETECTION_PROMPT.include_format_instructions,
     )

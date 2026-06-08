@@ -26,6 +26,7 @@ services:
     environment:
       AUTOPR_SERVICE_NAME: autopr-api
       AUTOPR_REDIS_URL: redis://redis:6379/0
+      AUTOPR_REPOS_DIR: /app/repos
       AUTOPR_TRACE_EXPORTER: otlp
       AUTOPR_METRICS_EXPORTER: otlp
       OTEL_EXPORTER_OTLP_TRACES_ENDPOINT: otel-collector:4317
@@ -58,6 +59,7 @@ services:
     environment:
       AUTOPR_SERVICE_NAME: autopr-worker
       AUTOPR_REDIS_URL: redis://redis:6379/0
+      AUTOPR_REPOS_DIR: /app/repos
       AUTOPR_TRACE_EXPORTER: otlp
       AUTOPR_METRICS_EXPORTER: otlp
       OTEL_EXPORTER_OTLP_TRACES_ENDPOINT: otel-collector:4317
