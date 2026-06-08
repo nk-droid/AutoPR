@@ -6,6 +6,7 @@ import time
 from pathlib import Path
 
 from infra.qa.models import CommandResult
+from infra.repo_worker.workspace import get_work_base, keep_qa_workspace
 
 class Sandbox:
     def __init__(self, repo_path: str):
@@ -13,7 +14,7 @@ class Sandbox:
         self.workspace: Path | None = None
 
     def __enter__(self) -> "Sandbox":
-        root = Path(tempfile.mkdtemp(prefix="autopr_qa_"))
+        root = Path(tempfile.mkdtemp(prefix="autopr_qa_", dir=str(get_work_base())))
         target = root / self.repo_path.name
         # Execute tools against an isolated copy to avoid mutating caller workspace.
         shutil.copytree(self.repo_path, target, dirs_exist_ok=True)
@@ -22,8 +23,11 @@ class Sandbox:
 
     def __exit__(self, exc_type, exc_val, exc_tb) -> None:
         if self.workspace and self.workspace.exists():
-            shutil.rmtree(self.workspace.parent, ignore_errors=True)
-            self.workspace = None
+            if keep_qa_workspace():
+                print(f"[qa] retained sandbox: {self.workspace}")
+            else:
+                shutil.rmtree(self.workspace.parent, ignore_errors=True)
+                self.workspace = None
 
     def run(self, command: list[str], timeout: int = 300) -> CommandResult:
         if self.workspace is None:

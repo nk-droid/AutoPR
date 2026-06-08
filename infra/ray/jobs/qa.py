@@ -11,6 +11,7 @@ from infra.qa.lint_runner import LintRunner
 from infra.qa.sandbox import Sandbox
 from infra.qa.security_runner import SecurityRunner
 from infra.qa.test_runner import TestRunner
+from infra.repo_worker.workspace import get_work_base, keep_qa_workspace
 
 def _collect_generated(qa_payload: QAJobPayload) -> dict[str, str]:
     return {
@@ -29,7 +30,7 @@ def _safe_rel(path: str) -> Path:
 def _materialize_workspace(
     qa_payload: QAJobPayload,
 ) -> tuple[Path, Callable[[], None]]:
-    temp = tempfile.TemporaryDirectory(prefix="autopr-qa-")
+    temp = tempfile.TemporaryDirectory(prefix="autopr-qa-", dir=str(get_work_base()))
     ws = Path(temp.name)
 
     repo_path = qa_payload.repo_path or ""
@@ -119,7 +120,10 @@ def _run_in_sandbox(
         with Sandbox(str(ws)) as sandbox:
             return callback(sandbox)
     finally:
-        cleanup()
+        if keep_qa_workspace():
+            print(f"[qa] retained workspace: {ws}")
+        else:
+            cleanup()
 
 def _execute_job(
     *,
