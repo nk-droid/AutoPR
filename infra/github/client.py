@@ -211,6 +211,16 @@ class GitHubClient:
             raise ValueError("Unexpected GitHub response while getting pull request")
         return payload
 
+    def list_pull_request_files(self, repo: str, pull_number: int, *, per_page: int = 100) -> list[dict]:
+        payload = self._request(
+            "GET",
+            f"/repos/{repo}/pulls/{pull_number}/files",
+            params={"per_page": per_page},
+        )
+        if not isinstance(payload, list):
+            raise ValueError("Unexpected GitHub response while listing pull request files")
+        return [item for item in payload if isinstance(item, dict)]
+
     def comment_on_pull_request(self, *, repo: str, pull_number: int, body: str) -> dict:
         payload = self._request(
             "POST",

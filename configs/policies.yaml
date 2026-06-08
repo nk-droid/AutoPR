@@ -1,0 +1,8 @@
+max_autonomous_loops: 3
+block_high_risk_automerge: true
+sensitive_path_patterns:
+  - ".github/workflows/**"
+  - "configs/**"
+  - "infra/**"
+  - "**/auth/**"
+  - "**/migrations/**"

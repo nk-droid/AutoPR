@@ -89,6 +89,22 @@ def _extract_reason(result: StageResult) -> str:
 
     return "No reason provided."
 
+def _format_blocking_findings(value: Any, *, limit: int = 5) -> str:
+    if not isinstance(value, list):
+        return ""
+
+    lines: list[str] = []
+    for item in value[:limit]:
+        if not isinstance(item, dict):
+            continue
+        summary = item.get("summary") or item.get("reason")
+        if not isinstance(summary, str) or not summary.strip():
+            continue
+        severity = item.get("severity")
+        prefix = f"`{severity}` " if isinstance(severity, str) and severity.strip() else ""
+        lines.append(f"- {prefix}{summary.strip()}")
+    return "\n".join(lines)
+
 def send_needs_review_notification(
     run: RunModel,
     result: StageResult,
@@ -122,47 +138,68 @@ def send_needs_review_notification(
     stage = str(result.stage)
     repository = run.repository
     reason = _extract_reason(result)
+    notes = result.notes if isinstance(result.notes, dict) else {}
+    merge_risk = notes.get("merge_risk")
+    confidence = notes.get("confidence")
+    findings_text = _format_blocking_findings(notes.get("blocking_findings"))
     
     approve_url = _build_action_url(request_id, "approved")
     disapprove_url = _build_action_url(request_id, "disapproved")
     run_url = f"{_action_base_url()}/runs/{run_id}"
 
-    payload = {
-        "text": f"AutoPR needs review for {repository} [{stage}]",
-        "blocks": [
-            {"type": "header", "text": {"type": "plain_text", "text": "AutoPR needs review"}},
+    blocks: list[dict[str, Any]] = [
+        {"type": "header", "text": {"type": "plain_text", "text": "AutoPR needs review"}},
+        {
+            "type": "section",
+            "fields": [
+                {"type": "mrkdwn", "text": f"*Repository*\n`{repository}`"},
+                {"type": "mrkdwn", "text": f"*Stage*\n`{stage}`"},
+                {"type": "mrkdwn", "text": f"*Run ID*\n`{run_id}`"},
+            ],
+        },
+        {"type": "section", "text": {"type": "mrkdwn", "text": f"*Reason*\n{reason}"}},
+    ]
+    if isinstance(merge_risk, str) and merge_risk.strip():
+        confidence_text = confidence if isinstance(confidence, str) and confidence.strip() else "unknown"
+        blocks.append(
             {
                 "type": "section",
                 "fields": [
-                    {"type": "mrkdwn", "text": f"*Repository*\n`{repository}`"},
-                    {"type": "mrkdwn", "text": f"*Stage*\n`{stage}`"},
-                    {"type": "mrkdwn", "text": f"*Run ID*\n`{run_id}`"},
-                ],
-            },
-            {"type": "section", "text": {"type": "mrkdwn", "text": f"*Reason*\n{reason}"}},
-            {
-                "type": "actions",
-                "elements": [
-                    {
-                        "type": "button",
-                        "style": "primary",
-                        "text": {"type": "plain_text", "text": "Approve"},
-                        "url": approve_url,
-                    },
-                    {
-                        "type": "button",
-                        "style": "danger",
-                        "text": {"type": "plain_text", "text": "Disapprove"},
-                        "url": disapprove_url,
-                    },
-                    {
-                        "type": "button",
-                        "text": {"type": "plain_text", "text": "Open Run"},
-                        "url": run_url,
-                    },
+                    {"type": "mrkdwn", "text": f"*Merge risk*\n`{merge_risk}`"},
+                    {"type": "mrkdwn", "text": f"*Confidence*\n`{confidence_text}`"},
                 ],
             }
-        ]
+        )
+    if findings_text:
+        blocks.append({"type": "section", "text": {"type": "mrkdwn", "text": f"*Blocking findings*\n{findings_text}"}})
+    blocks.append(
+        {
+            "type": "actions",
+            "elements": [
+                {
+                    "type": "button",
+                    "style": "primary",
+                    "text": {"type": "plain_text", "text": "Approve"},
+                    "url": approve_url,
+                },
+                {
+                    "type": "button",
+                    "style": "danger",
+                    "text": {"type": "plain_text", "text": "Disapprove"},
+                    "url": disapprove_url,
+                },
+                {
+                    "type": "button",
+                    "text": {"type": "plain_text", "text": "Open Run"},
+                    "url": run_url,
+                },
+            ],
+        }
+    )
+
+    payload = {
+        "text": f"AutoPR needs review for {repository} [{stage}]",
+        "blocks": blocks,
     }
 
     timeout_sec = int(os.getenv("SLACK_TIMEOUT_SEC", 5))

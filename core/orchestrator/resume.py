@@ -52,6 +52,8 @@ def resume_after_approval(
     run_model = RunModel.model_validate(stored.payload)
     resume_context = dict(context)
     resume_context["_resume_stage_index"] = int(stage_index)
+    if resume_context.get("review_request_kind") == "llm_soft_gate" or isinstance(resume_context.get("llm_review"), dict):
+        resume_context["llm_soft_gate_approved"] = True
 
     coordinator = Coordinator(run_model)
     if run_model.run_type == RunType.ISSUE_TO_PR:
