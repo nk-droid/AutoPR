@@ -1,6 +1,6 @@
 import uuid
 from typing import Dict, List
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 class CodeStep(BaseModel):
     id: uuid.UUID = Field(default_factory=uuid.uuid4)
@@ -9,5 +9,15 @@ class CodeStep(BaseModel):
     tests: List[str] = Field(..., description="List of test cases that should be used to validate the changes made in this code step.")
 
 class CodeOutput(BaseModel):
-    files_map: Dict[str, str] = Field(default_factory=dict, description="Map of changed file path to full resulting file content.")
-    tests_map: Dict[str, str] = Field(default_factory=dict, description="Map of test file path to its content.")
+    files_map: Dict[str, str] = Field(..., description="Map of changed file path to full resulting file content.")
+    tests_map: Dict[str, str] = Field(..., description="Map of test file path to its content.")
+
+    @model_validator(mode="after")
+    def validate_files_and_tests(cls, values):
+        files_map = values.files_map or {}
+        tests_map = values.tests_map or {}
+
+        if not files_map and not tests_map:
+            raise ValueError("At least one of files_map or tests_map must be provided.")
+
+        return values

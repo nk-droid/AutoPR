@@ -233,14 +233,12 @@ def generate_patch(state: dict[str, Any]) -> dict[str, Any]:
         or "Implement planned changes"
     )
 
-    qa_feedback = state.get("qa_feedback", "")
-    if isinstance(qa_feedback, str) and qa_feedback.strip():
-        objective = (
-            f"{objective}\n\n"
-            "The previous attempt FAILED automated QA. Fix these issues "
-            "(do not reintroduce them):\n"
-            f"{qa_feedback.strip()}"
-        )
+    raw_qa_feedback = state.get("qa_feedback", "")
+    qa_feedback_text = (
+        raw_qa_feedback.strip()
+        if isinstance(raw_qa_feedback, str) and raw_qa_feedback.strip()
+        else "No previous QA failures."
+    )
 
     raw_target_files = state.get("target_files", [])
 
@@ -303,6 +301,7 @@ def generate_patch(state: dict[str, Any]) -> dict[str, Any]:
             output_model=GeneratedFilesPayload,
             variables={
                 "objective": objective,
+                "qa_feedback": qa_feedback_text,
                 "target_files": "\n".join(target_files),
                 "tests": (
                     "\n".join(tests)
