@@ -284,6 +284,58 @@ def send_review_decision_notification(
         "reason": "ok",
     }
 
+def send_dead_letter_notification(
+    *,
+    message_id: str,
+    kind: str,
+    run_type: str,
+    repository: str,
+    attempts: int,
+    last_error: str,
+) -> dict[str, Any]:
+    if not _env_flag("SLACK_NOTIFY_DLQ", True):
+        return {"sent": False, "reason": "disabled"}
+
+    webhook_url = os.getenv("SLACK_WEBHOOK_URL")
+    if not webhook_url:
+        return {"sent": False, "reason": "missing_webhook"}
+
+    error_text = last_error.strip() if isinstance(last_error, str) and last_error.strip() else "No error captured."
+    blocks: list[dict[str, Any]] = [
+        {"type": "header", "text": {"type": "plain_text", "text": "AutoPR job dead-lettered"}},
+        {
+            "type": "section",
+            "fields": [
+                {"type": "mrkdwn", "text": f"*Repository*\n`{repository or 'unknown'}`"},
+                {"type": "mrkdwn", "text": f"*Run type*\n`{run_type}`"},
+                {"type": "mrkdwn", "text": f"*Kind*\n`{kind}`"},
+                {"type": "mrkdwn", "text": f"*Attempts*\n`{attempts}`"},
+                {"type": "mrkdwn", "text": f"*Message ID*\n`{message_id}`"},
+            ],
+        },
+        {"type": "section", "text": {"type": "mrkdwn", "text": f"*Last error*\n```{error_text[:1500]}```"}},
+    ]
+
+    payload = {
+        "text": f"AutoPR job dead-lettered for {repository or 'unknown'} ({run_type})",
+        "blocks": blocks,
+    }
+
+    timeout_sec = int(os.getenv("SLACK_TIMEOUT_SEC", 5))
+    try:
+        response = requests.post(webhook_url, json=payload, timeout=timeout_sec)
+    except Exception as exc:
+        return {"sent": False, "reason": f"slack_request_failed: {exc}"}
+
+    if response.status_code >= 400:
+        return {
+            "sent": False,
+            "reason": f"slack_http_{response.status_code}",
+            "response_text": response.text[:500],
+        }
+
+    return {"sent": True, "reason": "ok"}
+
 if __name__ == "__main__":
     import uuid
 

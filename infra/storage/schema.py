@@ -71,6 +71,20 @@ review_requests = Table(
     Column("updated_at", DateTime, server_default=func.now(), onupdate=func.now()),
 )
 
+dead_letter_jobs = Table(
+    "dead_letter_jobs",
+    metadata,
+    Column("message_id", String, primary_key=True),
+    Column("kind", String),
+    Column("run_type", String),
+    Column("repository", String),
+    Column("attempts", Integer),
+    Column("last_error", String),
+    Column("payload", JSON),
+    Column("created_at", DateTime, server_default=func.now()),
+    Column("updated_at", DateTime, server_default=func.now(), onupdate=func.now()),
+)
+
 from sqlalchemy import text
 from infra.storage.engine import get_engine
 

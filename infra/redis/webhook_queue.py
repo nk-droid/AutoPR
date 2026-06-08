@@ -153,20 +153,29 @@ class RedisWebhookQueue:
     async def ack(self, raw_message: str) -> None:
         await self._redis.lrem(self._processing_key, 1, raw_message)
 
-    async def fail(self, message: WebhookQueueMessage, raw_message: str, error_text: str) -> None:
+    async def fail(
+        self, message: WebhookQueueMessage, raw_message: str, error_text: str
+    ) -> tuple[bool, WebhookQueueMessage]:
+        """Retry or dead-letter a failed message.
+
+        Returns ``(dead_lettered, updated_message)`` so the caller can persist and
+        alert on terminal failures without coupling the queue to storage/Slack.
+        """
         next_message = message.model_copy(
             update={
                 "attempts": message.attempts + 1,
                 "last_error": error_text[:1000],
             }
         )
+        dead_lettered = next_message.attempts >= self._max_attempts
         pipe = self._redis.pipeline()
         pipe.lrem(self._processing_key, 1, raw_message)
-        if next_message.attempts >= self._max_attempts:
+        if dead_lettered:
             pipe.lpush(self._dlq_key, next_message.model_dump_json())
         else:
             pipe.lpush(self._queue_key, next_message.model_dump_json())
         await pipe.execute()
+        return dead_lettered, next_message
 
     async def close(self) -> None:
         await self._redis.aclose()
