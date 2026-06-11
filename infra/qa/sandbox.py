@@ -8,6 +8,9 @@ from pathlib import Path
 from infra.qa.models import CommandResult
 from infra.repo_worker.workspace import get_work_base, keep_qa_workspace
 
+import logging
+logger = logging.getLogger(__name__)
+
 class Sandbox:
     def __init__(self, repo_path: str):
         self.repo_path = Path(repo_path).resolve()
@@ -24,7 +27,7 @@ class Sandbox:
     def __exit__(self, exc_type, exc_val, exc_tb) -> None:
         if self.workspace and self.workspace.exists():
             if keep_qa_workspace():
-                print(f"[qa] retained sandbox: {self.workspace}")
+                logger.info(f"[qa] retained sandbox: {self.workspace}")
             else:
                 shutil.rmtree(self.workspace.parent, ignore_errors=True)
                 self.workspace = None
