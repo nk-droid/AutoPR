@@ -21,23 +21,16 @@ LLM_MERGE_RISK_REVIEW_PROMPT = require_prompt(_PROMPTS, "llm_merge_risk_review",
 llm_client = create_client()
 
 class MergeabilityUnknownError(Exception):
-    """Raised when a pull request's mergeability has not been computed yet.
+    """
+    Raised when a pull request's mergeability has not been computed yet.
 
     Signals the review graph's retry policy to wait and re-evaluate, giving
-    GitHub time to resolve ``mergeable_state`` from ``unknown``.
+    GitHub time to resolve `mergeable_state` from `unknown`.
     """
 
-def _normalized_status(value: Any) -> str:
-    if isinstance(value, StageStatus):
-        return value.value
-    if isinstance(value, CheckStatus):
-        return value.value
-    if isinstance(value, str):
-        return value.strip().lower()
-    return ""
-
 def _fetch_live_mergeability(payload: dict[str, Any]) -> tuple[Any, Any] | None:
-    """Re-fetch the PR from GitHub and return ``(mergeable, mergeable_state)``.
+    """
+    Re-fetch the PR from GitHub and return (mergeable, mergeable_state).
 
     Returns None when the lookup can't be performed or fails, so callers fall
     back to whatever mergeability was already in the payload.
@@ -58,12 +51,32 @@ def _fetch_live_mergeability(payload: dict[str, Any]) -> tuple[Any, Any] | None:
 
     return pull_request.get("mergeable"), pull_request.get("mergeable_state")
 
-
 @traced(
     "review_step.evaluate_review",
     attributes=langgraph_node_attrs("review", "evaluate_review"),
 )
 def evaluate_review(state: dict[str, Any]) -> dict[str, Any]:
+    """
+    Evaluate the pull request's readiness to merge by running deterministic review checks against QA status and live mergeability.
+
+    Args:
+        state: A dictionary containing the current state of the review process, including the PR-to-merge context.
+        ```
+        {
+            "context": PRToMergeContext(...),
+            "allow_unknown": False,
+            // other state variables...
+        }
+        ```
+
+    Returns:
+        An updated state dictionary with the review checks, required actions, summary, notes, and a status of OK, NEEDS_REVIEW, or BLOCKED.
+
+    Raises:
+        MergeabilityUnknownError: When mergeability is still unknown and allow_unknown is False, signalling the graph's retry policy to wait and re-evaluate.
+    """
+
+    # Check if the context is valid
     context = state.get("context")
     if not isinstance(context, PRToMergeContext):
         state["status"] = StageStatus.BLOCKED
@@ -74,7 +87,8 @@ def evaluate_review(state: dict[str, Any]) -> dict[str, Any]:
 
     payload = context.model_dump(mode="json")
 
-    if _normalized_status(payload.get("pull_request_mergeable_state")) in {"", _UNKNOWN_MERGEABLE_STATE}:
+    # Refresh the mergeability if it is unknown or empty
+    if payload.get("pull_request_mergeable_state") in {"", _UNKNOWN_MERGEABLE_STATE}:
         refreshed = _fetch_live_mergeability(payload)
         if refreshed is not None:
             mergeable, mergeable_state = refreshed
@@ -83,25 +97,33 @@ def evaluate_review(state: dict[str, Any]) -> dict[str, Any]:
             if mergeable_state is not None:
                 payload["pull_request_mergeable_state"] = mergeable_state
 
+    # Get the QA status from the payload
     qa_output = payload.get("qa_output", {})
     qa_status = ""
     if isinstance(qa_output, dict):
-        qa_status = _normalized_status(qa_output.get("status") or qa_output.get("qa_status"))
+        qa_status = qa_output.get("status") or qa_output.get("qa_status")
     if not qa_status:
-        qa_status = _normalized_status(payload.get("qa_status"))
+        qa_status = payload.get("qa_status")
 
+    # Determine the status of the QA check based on the QA output
     qa_check_status = CheckStatus.WARN
     qa_check_details = "qa status unavailable"
     if qa_status == StageStatus.OK.value:
         qa_check_status = CheckStatus.PASS
-        qa_check_details = "qa_output.status=ok"
+        qa_check_details = f"qa_output.status={qa_status}"
+
+    # Check if the QA status is blocked or failed
     elif qa_status in {StageStatus.BLOCKED.value, StageStatus.FAILED.value, CheckStatus.FAIL.value, "failed", "error"}:
         qa_check_status = CheckStatus.FAIL
         qa_check_details = f"qa_output.status={qa_status}"
+
+    # If the QA status is not available, check the PR mergeability
     elif isinstance(payload.get("pull_request_mergeable"), bool):
         # Fall back to live PR mergeability when qa_output is missing/incomplete.
         qa_check_status = CheckStatus.PASS if payload.get("pull_request_mergeable") else CheckStatus.FAIL
         qa_check_details = f"derived_from_pull_request.mergeable={payload.get('pull_request_mergeable')}"
+
+    # Check if the PR mergeability state is clean, has hooks, or unstable
     elif payload.get("pull_request_mergeable_state") in {
         GitHubMergeableState.CLEAN.value,
         GitHubMergeableState.HAS_HOOKS.value,
@@ -109,6 +131,8 @@ def evaluate_review(state: dict[str, Any]) -> dict[str, Any]:
     }:
         qa_check_status = CheckStatus.PASS
         qa_check_details = f"derived_from_pull_request.mergeable_state={payload.get('pull_request_mergeable_state')}"
+
+    # Check if the PR mergeability state is dirty, blocked, behind, or draft
     elif payload.get("pull_request_mergeable_state") in {
         GitHubMergeableState.DIRTY.value,
         GitHubMergeableState.BLOCKED.value,
@@ -117,20 +141,26 @@ def evaluate_review(state: dict[str, Any]) -> dict[str, Any]:
     }:
         qa_check_status = CheckStatus.FAIL
         qa_check_details = f"derived_from_pull_request.mergeable_state={payload.get('pull_request_mergeable_state')}"
+    
+    # Check if the PR mergeability state is unknown
     elif payload.get("pull_request_mergeable_state"):
         qa_check_status = CheckStatus.WARN
         qa_check_details = f"pull_request.mergeable_state={payload.get('pull_request_mergeable_state')}"
 
+    # Raise MergeabilityUnknownError when the PR mergeability is still unknown for the retry policy
     allow_unknown = bool(state.get("allow_unknown", False))
     if (
         not allow_unknown
         and qa_check_status == CheckStatus.WARN
-        and _normalized_status(payload.get("pull_request_mergeable_state")) == _UNKNOWN_MERGEABLE_STATE
+        and payload.get("pull_request_mergeable_state") == _UNKNOWN_MERGEABLE_STATE
     ):
         raise MergeabilityUnknownError(
             f"pull request #{payload.get('pull_request_number')} mergeability is still unknown"
         )
 
+    # Determine final status based on the checks. If any check fails, the status is BLOCKED
+    # If all checks pass, the status is OK
+    # If any check is WARN, the status is NEEDS_REVIEW
     checks = [
         ReviewCheck(name="qa_or_mergeability_green", status=qa_check_status, details=qa_check_details),
         ReviewCheck(
@@ -169,6 +199,7 @@ def evaluate_review(state: dict[str, Any]) -> dict[str, Any]:
     else:
         status = StageStatus.OK
 
+    # Update required actions based on the checks
     required_actions: list[str] = []
     if qa_check_status == CheckStatus.FAIL:
         required_actions.append(
@@ -178,17 +209,23 @@ def evaluate_review(state: dict[str, Any]) -> dict[str, Any]:
         required_actions.append(
             "Confirm CI and required checks have completed; mergeability status is still unknown."
         )
+
     if not payload.get("pull_request_number", -1) > 0:
         required_actions.append("Open a pull request and provide pull_request_number.")
+
     if payload.get("pull_request_state") != GitHubPullRequestState.OPEN.value:
         required_actions.append("Re-open the pull request before merge.")
+
     if payload.get("pull_request_draft", False):
         required_actions.append("Mark the pull request ready for review (not draft).")
+
     if not payload.get("review_approved"):
         required_actions.append("Mark review_approved=true after human approval.")
+
     if not payload.get("pull_request_url"):
         required_actions.append("Provide pull_request_url for reviewer context.")
 
+    # Update state with the results of the review checks
     state["status"] = status
     state["checks"] = checks
     state["required_actions"] = required_actions
@@ -197,6 +234,7 @@ def evaluate_review(state: dict[str, Any]) -> dict[str, Any]:
         f"{sum(c.status == CheckStatus.WARN for c in checks)} warn, "
         f"{sum(c.status == CheckStatus.FAIL for c in checks)} fail."
     )
+
     state["notes"] = {
         "qa_status": qa_status,
         "pull_request_number": payload.get("pull_request_number", -1),
@@ -207,6 +245,7 @@ def evaluate_review(state: dict[str, Any]) -> dict[str, Any]:
         "pull_request_mergeable_state": payload.get("pull_request_mergeable_state", ""),
         "review_approved": payload.get("review_approved", False) is True,
     }
+
     return state
 
 def _review_payload(context: PRToMergeContext) -> dict[str, Any]:
@@ -226,6 +265,24 @@ def _pipeline_context(payload: dict[str, Any]) -> dict[str, Any]:
     attributes=langgraph_node_attrs("review", "llm_merge_risk_review"),
 )
 def llm_merge_risk_review(state: dict[str, Any]) -> dict[str, Any]:
+    """
+    Run an LLM-based merge-risk review over the PR context and changed files as a soft gate before merge.
+
+    Args:
+        state: A dictionary containing the current state of the review process, including the status and PR-to-merge context.
+        ```
+        {
+            "status": StageStatus.OK,
+            "context": PRToMergeContext(...),
+            // other state variables...
+        }
+        ```
+
+    Returns:
+        An updated state dictionary with the LLM merge-risk review added. The state is returned unchanged when the status is not OK or the soft gate has already been approved; on LLM failure a conservative medium-risk review recommending manual review is attached.
+    """
+
+    # Skip if state is not OK or soft gate is already approved
     if state.get("status") != StageStatus.OK:
         return state
 
@@ -281,6 +338,26 @@ def llm_merge_risk_review(state: dict[str, Any]) -> dict[str, Any]:
     attributes=langgraph_node_attrs("review", "finalize"),
 )
 def finalize(state: dict[str, Any]) -> dict[str, Any]:
+    """
+    Finalize the review process by compiling the checks, required actions, and LLM review into a ReviewOutput object.
+
+    Args:
+        state: A dictionary containing the current state of the review process, including the checks, required actions, summary, and LLM review.
+        ```
+        {
+            "summary": "...",
+            "checks": [ReviewCheck(...), ...],
+            "required_actions": [...],
+            "llm_review": LLMMergeRiskReview(...),
+            // other state variables...
+        }
+        ```
+
+    Returns:
+        An updated state dictionary with the final review output added.
+    """
+
+    # Collect data for ReviewOutput
     raw_checks = state.get("checks", [])
     checks = [item for item in raw_checks if isinstance(item, ReviewCheck)] if isinstance(raw_checks, list) else []
     required_actions = state.get("required_actions", [])
@@ -288,17 +365,19 @@ def finalize(state: dict[str, Any]) -> dict[str, Any]:
     llm_review: LLMMergeRiskReview | None = None
     if isinstance(llm_review_value, LLMMergeRiskReview):
         llm_review = llm_review_value
+
     elif isinstance(llm_review_value, dict):
         try:
             llm_review = LLMMergeRiskReview.model_validate(llm_review_value)
         except Exception:
             llm_review = None
+
     result = ReviewOutput(
         summary=state.get("summary", ""),
         checks=checks,
         required_actions=required_actions if isinstance(required_actions, list) else [],
         llm_review=llm_review,
     )
+
     state["final_output"] = result.model_dump(mode="json")
-    print(f"Final review output: {state['final_output']}")
     return state

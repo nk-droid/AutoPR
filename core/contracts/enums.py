@@ -22,6 +22,7 @@ class RunState(str, Enum):
     REVIEW_PENDING = "REVIEW_PENDING"
     READY_TO_MERGE = "READY_TO_MERGE"
     MERGED = "MERGED"
+    BLOCKED = "BLOCKED"
 
 class CheckStatus(str, Enum):
     PASS = "pass"
@@ -32,15 +33,6 @@ class RiskLevel(str, Enum):
     LOW = "low"
     MEDIUM = "medium"
     HIGH = "high"
-
-class AmbiguityStatus(str, Enum):
-    OK = "ok"
-    NEEDS_REVIEW = "needs_review"
-
-class PlanStatus(str, Enum):
-    OK = "ok"
-    NEEDS_REVIEW = "needs_review"
-    BLOCKED = "blocked"
 
 class GitHubWebhookEventType(str, Enum):
     ISSUES = "issues"
@@ -93,3 +85,7 @@ class GitHubIssuePickStrategy(str, Enum):
 
 class GitHubPathSegment(str, Enum):
     ISSUES = "issues"
+
+class WebhookResultType(str, Enum):
+    ACCEPTED = "accepted"
+    IGNORED = "ignored"

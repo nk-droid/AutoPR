@@ -3,8 +3,9 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
-from core.contracts.enums import PlanStatus, RiskLevel
+from core.contracts.enums import RiskLevel
 from core.contracts.plan import PlanOutput, PlanStep
+from core.orchestrator.models import StageStatus
 from core.contracts.triage import TriageResult
 from infra.llm.chains import invoke_chain
 from infra.llm.client import create_client
@@ -29,7 +30,7 @@ class DraftPlanStepModel(BaseModel):
     risk_level: RiskLevel = RiskLevel.LOW
 
 class DraftPlanModel(BaseModel):
-    status: PlanStatus = PlanStatus.OK
+    status: StageStatus = StageStatus.OK
     strategy: str
     assumptions: list[str] = Field(default_factory=list)
     open_questions: list[str] = Field(default_factory=list)
@@ -43,7 +44,7 @@ class DependencyMapModel(BaseModel):
     steps: list[DependencyItem] = Field(default_factory=list)
 
 class PlanAmbiguityModel(BaseModel):
-    status: PlanStatus = PlanStatus.OK
+    status: StageStatus = StageStatus.OK
     open_questions: list[str] = Field(default_factory=list)
 
 def _as_triage_result(value: Any) -> TriageResult:
@@ -61,8 +62,27 @@ def _as_plan_steps(values: Any) -> list[PlanStep]:
     attributes=langgraph_node_attrs("plan", "draft_plan"),
 )
 def draft_plan(state: dict[str, Any]) -> dict[str, Any]:
+    """
+    Draft a plan based on the triage result and repository context.
+
+    Args:
+        state: A dictionary containing the current state of the plan, including the triage result and repository map.
+        ```
+        {
+            "triage_result": TriageResult(...),
+            "repo_map": "...",
+            // other state variables...
+        }
+        ```
+
+    Returns:
+        An updated state dictionary with the drafted plan details added.
+    """
+
+    # Extract triage result from state
     triage_result = _as_triage_result(state.get("triage_result"))
 
+    # Extract repo map from state
     repo_map_value = state.get("repo_map", "")
     repo_map = repo_map_value if isinstance(repo_map_value, str) and repo_map_value.strip() else ""
 
@@ -82,6 +102,7 @@ def draft_plan(state: dict[str, Any]) -> dict[str, Any]:
         include_format_instructions=PLAN_DRAFT_PROMPT.include_format_instructions,
     )
 
+    # Update the state with the response from the LLM
     state["status"] = response.status
     state["strategy"] = response.strategy
     state["assumptions"] = response.assumptions
@@ -98,6 +119,7 @@ def draft_plan(state: dict[str, Any]) -> dict[str, Any]:
         )
         for step in response.steps
     ]
+
     return state
 
 @traced(
@@ -105,6 +127,23 @@ def draft_plan(state: dict[str, Any]) -> dict[str, Any]:
     attributes=langgraph_node_attrs("plan", "map_dependencies"),
 )
 def map_dependencies(state: dict[str, Any]) -> dict[str, Any]:
+    """
+    Map dependencies between plan steps using an LLM.
+
+    Args:
+        state: A dictionary containing the current state of the plan, including the drafted steps.
+        ```
+        {
+            "steps": [PlanStep(...), ...],
+            // other state variables...
+        }
+        ```
+
+    Returns:
+        An updated state dictionary with dependencies between steps added.
+    """
+
+    # Extract plan steps from state
     plan_steps = _as_plan_steps(state.get("steps"))
     
     response = invoke_chain(
@@ -118,6 +157,7 @@ def map_dependencies(state: dict[str, Any]) -> dict[str, Any]:
         include_format_instructions=DEPENDENCY_MAPPING_PROMPT.include_format_instructions,
     )
 
+    # Update the state with dependencies between steps
     dependency_titles_by_step_title = {
         item.title: item.depends_on_titles
         for item in response.steps
@@ -135,6 +175,7 @@ def map_dependencies(state: dict[str, Any]) -> dict[str, Any]:
         )
         for step in plan_steps
     ]
+
     return state
 
 @traced(
@@ -142,10 +183,28 @@ def map_dependencies(state: dict[str, Any]) -> dict[str, Any]:
     attributes=langgraph_node_attrs("plan", "detect_ambiguity"),
 )
 def detect_ambiguity(state: dict[str, Any]) -> dict[str, Any]:
+    """
+    Detect ambiguity in the plan steps using an LLM.
+
+    Args:
+        state: A dictionary containing the current state of the plan, including the drafted steps and their dependencies.
+        ```
+        {
+            "steps": [PlanStep(...), ...],
+            "status": PlanStatus.OK,
+            // other state variables...
+        }
+        ```
+
+    Returns:
+        An updated state dictionary with the ambiguity status and any open questions added.
+    """
+
+    # Extract plan steps and status from state
     plan_steps = _as_plan_steps(state.get("steps"))
-    current_status = state.get("status", PlanStatus.OK)
-    if not isinstance(current_status, PlanStatus):
-        current_status = PlanStatus.OK
+    current_status = state.get("status", StageStatus.OK)
+    if not isinstance(current_status, StageStatus):
+        current_status = StageStatus.OK
 
     response = invoke_chain(
         template=PLAN_AMBIGUITY_PROMPT.template,
@@ -168,6 +227,7 @@ def detect_ambiguity(state: dict[str, Any]) -> dict[str, Any]:
 
     state["status"] = response.status
 
+    # Update the list of open questions by merging existing questions with new ones
     current_questions = state.get("open_questions", [])
     if not isinstance(current_questions, list):
         current_questions = []
@@ -178,6 +238,7 @@ def detect_ambiguity(state: dict[str, Any]) -> dict[str, Any]:
             merged_questions.append(question)
 
     state["open_questions"] = merged_questions
+
     return state
 
 @traced(
@@ -185,6 +246,26 @@ def detect_ambiguity(state: dict[str, Any]) -> dict[str, Any]:
     attributes=langgraph_node_attrs("plan", "finalize"),
 )
 def finalize(state: dict[str, Any]) -> dict[str, Any]:
+    """
+    Finalize the plan by compiling the results into a PlanOutput object.
+
+    Args:
+        state: A dictionary containing the current state of the plan, including the drafted steps, dependencies, and ambiguity status.
+        ```
+        {
+            "strategy": "...",
+            "assumptions": [...],
+            "open_questions": [...],
+            "steps": [PlanStep(...), ...],
+            "status": PlanStatus.OK,
+            // other state variables...
+        }
+        ```
+
+    Returns:
+        An updated state dictionary with the final plan output added.
+    """
+    
     plan_steps = _as_plan_steps(state.get("steps"))
     assumptions = state.get("assumptions", [])
     open_questions = state.get("open_questions", [])
