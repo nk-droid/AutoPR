@@ -21,6 +21,22 @@ AMBIGUITY_DETECTION_PROMPT = require_prompt(_PROMPTS, "ambiguity_detection", sou
     attributes=langgraph_node_attrs("triage", "extract_task"),
 )
 def extract_task(state: dict[str, Any]) -> dict[str, Any]:
+    """
+    Extract the task specification from the triage issue using an LLM.
+
+    Args:
+        state: A dictionary containing the current state of the triage process, including the triage issue.
+        ```
+        {
+            "issue": TriageIssueInput(...),
+            // other state variables...
+        }
+        ```
+
+    Returns:
+        An updated state dictionary with the extracted task specification added.
+    """
+
     issue_value = state.get("issue")
     if isinstance(issue_value, TriageIssueInput):
         issue = issue_value
@@ -46,6 +62,22 @@ def extract_task(state: dict[str, Any]) -> dict[str, Any]:
     attributes=langgraph_node_attrs("triage", "assess_risk"),
 )
 def assess_risk(state: dict[str, Any]) -> dict[str, Any]:
+    """
+    Assess the risk associated with the task using an LLM.
+
+    Args:
+        state: A dictionary containing the current state of the triage process, including the extracted task specification.
+        ```
+        {
+            "task_spec": TaskSpec(...),
+            // other state variables...
+        }
+        ```
+
+    Returns:
+        An updated state dictionary with the assessed risk added.
+    """
+
     task_spec_value = state.get("task_spec")
     task_spec = task_spec_value if isinstance(task_spec_value, TaskSpec) else TaskSpec.model_validate(task_spec_value)
     
@@ -75,6 +107,23 @@ def assess_risk(state: dict[str, Any]) -> dict[str, Any]:
     attributes=langgraph_node_attrs("triage", "detect_ambiguity"),
 )
 def detect_ambiguity(state: dict[str, Any]) -> dict[str, Any]:
+    """
+    Detect any ambiguity in the task specification and risk assessment using an LLM.
+
+    Args:
+        state: A dictionary containing the current state of the triage process, including the extracted task specification and assessed risk.
+        ```
+        {
+            "task_spec": TaskSpec(...),
+            "risk": Risk(...),
+            // other state variables...
+        }
+        ```
+
+    Returns:
+        An updated state dictionary with the detected ambiguity and its status added.
+    """
+
     task_spec_value = state.get("task_spec")
     risk_value = state.get("risk")
     task_spec = task_spec_value if isinstance(task_spec_value, TaskSpec) else TaskSpec.model_validate(task_spec_value)
@@ -111,6 +160,24 @@ def detect_ambiguity(state: dict[str, Any]) -> dict[str, Any]:
     attributes=langgraph_node_attrs("triage", "finalize"),
 )
 def finalize(state: dict[str, Any]) -> dict[str, Any]:
+    """
+    Finalize the triage process by compiling the results into a TriageResult object.
+
+    Args:
+        state: A dictionary containing the current state of the triage process, including the extracted task specification, assessed risk, and detected ambiguity.
+        ```
+        {
+            "task_spec": TaskSpec(...),
+            "risk": Risk(...),
+            "ambiguity": AmbiguityResult(...),
+            // other state variables...
+        }
+        ```
+
+    Returns:
+        An updated state dictionary with the final triage result added.
+    """
+    
     task_spec_value = state.get("task_spec")
     risk_value = state.get("risk")
     ambiguity_value = state.get("ambiguity")

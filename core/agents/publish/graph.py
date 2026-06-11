@@ -23,6 +23,7 @@ class PublishState(TypedDict):
     notes: dict[str, Any]
     final_output: dict[str, Any]
 
+# Prepare -> Resolve workspace -> Apply files -> Commit & push -> Finalize
 def build_publish_graph(nodes) -> StateGraph[PublishState]:
     graph = StateGraph(PublishState)
     graph.add_node("prepare", nodes.prepare)

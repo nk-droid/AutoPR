@@ -8,34 +8,53 @@ from pydantic import BaseModel, Field
 from core.contracts.enums import PipelineStage, RiskLevel
 from core.orchestrator.models import MergeDecision, StageResult
 
-
 class PolicyFinding(BaseModel):
+    """Reviewer-facing policy finding with an optional internal reason code."""
+
     reason: str
     suggested_fix: str
     internal_code: str = ""
 
-
 class PolicyConfig(BaseModel):
+    """Configuration that controls deterministic merge policy checks."""
+
     block_high_risk_automerge: bool = True
     sensitive_path_patterns: list[str] = Field(default_factory=list)
 
-
 class PolicyEvaluation(BaseModel):
+    """Policy decision paired with findings safe to show to reviewers."""
+
     decision: MergeDecision
     public_findings: list[PolicyFinding] = Field(default_factory=list)
 
-
 _POLICY_PATH = Path(__file__).resolve().parents[2] / "configs" / "policies.yaml"
-
-
 def load_policy_config(path: Path = _POLICY_PATH) -> PolicyConfig:
+    """
+    Load merge policy settings, falling back to safe defaults when absent.
+
+    Args:
+        path: YAML policy path to load.
+
+    Returns:
+        Validated policy configuration.
+    """
+
     if not path.exists():
         return PolicyConfig()
     raw = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
     return PolicyConfig.model_validate(raw)
 
-
 def coerce_merge_decision(value: Any) -> MergeDecision | None:
+    """
+    Normalize optional policy input into a merge decision model.
+
+    Args:
+        value: Existing merge decision or dictionary payload.
+
+    Returns:
+        Merge decision when coercion succeeds, otherwise None.
+    """
+
     if isinstance(value, MergeDecision):
         return value
     if isinstance(value, dict):
@@ -45,8 +64,17 @@ def coerce_merge_decision(value: Any) -> MergeDecision | None:
             return None
     return None
 
-
 def _risk_levels(context: Mapping[str, Any]) -> list[str]:
+    """
+    Extract risk levels from triage and planning context.
+
+    Args:
+        context: Workflow context containing risk and plan data.
+
+    Returns:
+        Lowercase risk levels found in the context.
+    """
+
     levels: list[str] = []
 
     risk = context.get("risk")
@@ -66,8 +94,17 @@ def _risk_levels(context: Mapping[str, Any]) -> list[str]:
 
     return levels
 
-
 def _changed_paths(context: Mapping[str, Any]) -> set[str]:
+    """
+    Collect changed file paths reported by review and coding stages.
+
+    Args:
+        context: Workflow context containing changed files or coding output.
+
+    Returns:
+        Set of changed paths considered by policy checks.
+    """
+
     paths: set[str] = set()
 
     changed_files = context.get("changed_files")
@@ -87,8 +124,18 @@ def _changed_paths(context: Mapping[str, Any]) -> set[str]:
 
     return paths
 
-
 def _stage_result(context: Mapping[str, Any], stage: PipelineStage) -> StageResult | None:
+    """
+    Retrieve a stage result from workflow context when available.
+
+    Args:
+        context: Workflow context containing prior stage results.
+        stage: Pipeline stage whose result should be loaded.
+
+    Returns:
+        Stage result model, or None when missing or invalid.
+    """
+
     stage_results = context.get("_stage_results")
     if not isinstance(stage_results, dict):
         return None
@@ -102,8 +149,17 @@ def _stage_result(context: Mapping[str, Any], stage: PipelineStage) -> StageResu
             return None
     return None
 
-
 def _qa_findings(context: Mapping[str, Any]) -> list[PolicyFinding]:
+    """
+    Convert non-green QA results into merge-blocking policy findings.
+
+    Args:
+        context: Workflow context containing prior QA stage results.
+
+    Returns:
+        Policy findings explaining QA readiness issues.
+    """
+
     qa_result = _stage_result(context, PipelineStage.QA)
     if qa_result is None:
         return []
@@ -117,8 +173,17 @@ def _qa_findings(context: Mapping[str, Any]) -> list[PolicyFinding]:
         )
     ]
 
-
 def evaluate_review_policy(context: Mapping[str, Any]) -> PolicyEvaluation:
+    """
+    Evaluate deterministic policy gates before allowing automated merge.
+
+    Args:
+        context: Workflow context with risk, file, and QA information.
+
+    Returns:
+        Policy decision and reviewer-safe findings.
+    """
+
     config = load_policy_config()
     findings: list[PolicyFinding] = []
 
@@ -156,4 +221,3 @@ def evaluate_review_policy(context: Mapping[str, Any]) -> PolicyEvaluation:
         )
 
     return PolicyEvaluation(decision=MergeDecision(allowed=True, reason="Policy checks passed"))
-

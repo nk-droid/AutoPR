@@ -11,6 +11,17 @@ from infra.storage.review_requests import mark_review_request_applied
 # the heavy publish/PR work happens in the properly provisioned environment.
 
 def _build_issue_to_pr_context(run: RunModel, base: dict[str, Any]) -> IssueToPRContext:
+    """
+    Reconstruct issue workflow context for an approved review resume.
+
+    Args:
+        run: Stored run model that originally requested review.
+        base: Review request context persisted at the approval gate.
+
+    Returns:
+        Validated context ready to re-enter issue-to-PR execution.
+    """
+
     ctx = dict(base)
     ctx["repository"] = ctx.get("repository") or run.repository
     issue_number = ctx.get("issue_number") or run.issue_number
@@ -25,6 +36,17 @@ def _build_issue_to_pr_context(run: RunModel, base: dict[str, Any]) -> IssueToPR
     return IssueToPRContext.model_validate(ctx)
 
 def _build_pr_to_merge_context(run: RunModel, base: dict[str, Any]) -> PRToMergeContext:
+    """
+    Reconstruct merge workflow context for an approved review resume.
+
+    Args:
+        run: Stored run model that originally requested review.
+        base: Review request context persisted at the approval gate.
+
+    Returns:
+        Validated context ready to re-enter PR-to-merge execution.
+    """
+
     ctx = dict(base)
     ctx["repository"] = ctx.get("repository") or run.repository
     pr_number = ctx.get("pull_request_number") or run.pull_request_number
@@ -45,6 +67,21 @@ def resume_after_approval(
     reviewer: str = "",
     reason: str = "",
 ) -> RunModel:
+    """
+    Resume a blocked human-review workflow after approval has been recorded.
+
+    Args:
+        request_id: Review request being applied.
+        run_id: Stored run to reload and continue.
+        stage_index: Pipeline stage index to resume from.
+        context: Persisted review context captured at the gate.
+        reviewer: Actor who approved the request.
+        reason: Optional approval reason to store in run history.
+
+    Returns:
+        Final run model produced by the resumed workflow.
+    """
+
     stored = load_run(run_id)
     if stored is None:
         raise ValueError(f"Run not found: {run_id}")

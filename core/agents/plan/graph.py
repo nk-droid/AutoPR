@@ -33,6 +33,7 @@ PARSER_RETRY_POLICY = RetryPolicy(
     retry_on=is_output_parse_error,
 )
 
+# Draft plan -> Map dependencies -> Detect ambiguity -> Finalize
 def build_plan_graph(nodes) -> StateGraph[PlanState]:
     graph = StateGraph(PlanState)
     graph.add_node("draft_plan", nodes.draft_plan, retry_policy=PARSER_RETRY_POLICY)

@@ -19,6 +19,13 @@ AttributeFactory = Callable[..., SpanAttributes | None]
 
 _configured = False
 def configure_tracing(service_name: str | None = None) -> None:
+    """
+    Configure OpenTelemetry tracing once for the current process.
+
+    Args:
+        service_name: Optional service name overriding AUTOPR_SERVICE_NAME.
+    """
+
     global _configured
     if _configured:
         return
@@ -51,21 +58,52 @@ def configure_tracing(service_name: str | None = None) -> None:
     _configured = True
 
 def get_tracer():
+    """
+    Return the AutoPR tracer after ensuring tracing is configured.
+
+    Returns:
+        OpenTelemetry tracer used by application instrumentation.
+    """
+
     configure_tracing()
     return trace.get_tracer("autopr")
 
 def inject_trace_context() -> dict[str, str]:
+    """
+    Serialize the active trace context for queue or Ray handoff.
+
+    Returns:
+        Carrier dictionary containing propagated trace headers.
+    """
+
     carrier: dict[str, str] = {}
     propagate.inject(carrier)
     return carrier
 
 def attach_trace_context(carrier: dict[str, str] | None):
+    """
+    Attach propagated trace context to the current execution scope.
+
+    Args:
+        carrier: Propagated trace header dictionary from another process.
+
+    Returns:
+        OpenTelemetry context token, or None when no carrier is provided.
+    """
+
     if not carrier:
         return None
     ctx = propagate.extract(carrier)
     return context.attach(ctx)
 
 def detach_trace_context(token) -> None:
+    """
+    Detach a previously attached trace context token.
+
+    Args:
+        token: Context token returned by attach_trace_context.
+    """
+
     if token is not None:
         context.detach(token)
 
@@ -87,6 +125,17 @@ def _resolve_attributes(
     return attributes(**bound.arguments) or {}
 
 def traced(name: str, attributes: SpanAttributes | AttributeFactory | None = None):
+    """
+    Decorate sync or async functions with an application trace span.
+
+    Args:
+        name: Span name to create around the wrapped function.
+        attributes: Static attributes or factory built from call arguments.
+
+    Returns:
+        Decorator that wraps the target function with tracing.
+    """
+
     def decorator(fn: Callable):
         @wraps(fn)
         async def async_wrapper(*args, **kwargs):
@@ -130,6 +179,18 @@ def traced_remote(
     context_arg: str = "trace_context",
     attributes: SpanAttributes | AttributeFactory | None = None,
 ):
+    """
+    Decorate remote worker functions while restoring propagated trace context.
+
+    Args:
+        name: Span name to create around the wrapped remote function.
+        context_arg: Argument name containing propagated trace headers.
+        attributes: Static attributes or factory built from call arguments.
+
+    Returns:
+        Decorator that wraps the remote function with tracing and flushing.
+    """
+
     def decorator(fn: Callable):
         @wraps(fn)
         def sync_wrapper(*args, **kwargs):
@@ -162,6 +223,18 @@ def ray_worker_attrs(
     payload: Any = None,
     **_: Any,
 ) -> dict:
+    """
+    Build common span attributes for Ray worker execution.
+
+    Args:
+        self: Worker instance being traced.
+        payload: Optional payload passed to the worker.
+        **_: Ignored extra call arguments.
+
+    Returns:
+        Worker class and payload type attributes.
+    """
+
     return {
         "autopr.worker.class": self.__class__.__name__,
         "autopr.payload.type": payload.__class__.__name__ if payload is not None else "",
@@ -171,6 +244,19 @@ def _value(value: Any) -> str:
     return value.value if hasattr(value, "value") else str(value)
 
 def pipeline_step_attrs(self, context: dict[str, Any], run, runtime) -> dict[str, AttributeValue]:
+    """
+    Build common span attributes for pipeline step execution.
+
+    Args:
+        self: Pipeline step instance being traced.
+        context: Mutable workflow context shared across stages.
+        run: Current run model.
+        runtime: Runtime facade passed to the step.
+
+    Returns:
+        Run, stage, and repository attributes for the span.
+    """
+
     return {
         "autopr.run_id": str(run.run_id),
         "autopr.run_type": _value(run.run_type),
@@ -180,6 +266,17 @@ def pipeline_step_attrs(self, context: dict[str, Any], run, runtime) -> dict[str
     }
 
 def langgraph_node_attrs(agent: str, node: str):
+    """
+    Create an attribute factory for LangGraph agent node spans.
+
+    Args:
+        agent: Agent name attached to the span.
+        node: Node name attached to the span.
+
+    Returns:
+        Attribute factory that reads status from node state.
+    """
+
     def factory(state: dict[str, Any] | None = None, **_: Any) -> dict[str, AttributeValue]:
         state = state if isinstance(state, dict) else {}
         status = state.get("status", "")
@@ -192,6 +289,16 @@ def langgraph_node_attrs(agent: str, node: str):
     return factory
 
 def llm_chain_attrs(**kwargs) -> dict[str, AttributeValue]:
+    """
+    Build span attributes for structured LLM chain invocations.
+
+    Args:
+        **kwargs: Arguments passed to the LLM chain function.
+
+    Returns:
+        LLM output model and prompt-shaping attributes.
+    """
+
     output_model = kwargs.get("output_model")
     return {
         "autopr.llm.output_model": getattr(output_model, "__name__", str(output_model)),

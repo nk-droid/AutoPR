@@ -2,14 +2,12 @@ from typing import Any
 
 from core.policies.engine import PolicyFinding
 
-
 def _finding_from_mapping(item: dict[str, Any]) -> PolicyFinding:
     return PolicyFinding(
         reason=str(item.get("reason") or item.get("summary") or "Review finding").strip(),
         suggested_fix=str(item.get("suggested_fix") or "Review and address this finding before merging.").strip(),
         internal_code=str(item.get("internal_code") or item.get("category") or "").strip(),
     )
-
 
 def normalize_public_findings(value: Any) -> list[PolicyFinding]:
     if not isinstance(value, list):
@@ -22,7 +20,6 @@ def normalize_public_findings(value: Any) -> list[PolicyFinding]:
         elif isinstance(item, dict):
             findings.append(_finding_from_mapping(item))
     return findings
-
 
 def format_review_findings_comment(
     *,

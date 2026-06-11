@@ -13,6 +13,7 @@ class MergeState(TypedDict):
     notes: dict[str, Any]
     final_output: dict[str, Any]
 
+# Prepare -> Merge -> Finalize
 def build_merge_graph(nodes) -> StateGraph[MergeState]:
     graph = StateGraph(MergeState)
     graph.add_node("prepare", nodes.prepare)

@@ -11,6 +11,16 @@ from infra.storage.schema import review_requests
 _ALLOWED_DECISIONS = {"approved", "disapproved"}
 
 def _row_to_dict(row: Any) -> dict[str, Any]:
+    """
+    Normalize a review request database row into API-friendly fields.
+
+    Args:
+        row: SQLAlchemy row returned from the review_requests table.
+
+    Returns:
+        Dictionary with empty defaults for nullable review fields.
+    """
+
     return {
         "request_id": row.request_id,
         "run_id": row.run_id,
@@ -32,6 +42,16 @@ def _row_to_dict(row: Any) -> dict[str, Any]:
     }
 
 def get_review_request(request_id: str) -> dict[str, Any] | None:
+    """
+    Fetch one review request by identifier.
+
+    Args:
+        request_id: Review request identifier.
+
+    Returns:
+        Review request dictionary, or None when it does not exist.
+    """
+
     engine = get_engine()
     query = select(review_requests).where(
         review_requests.c.request_id == request_id
@@ -49,6 +69,20 @@ def create_review_request(
     stage_index: int,
     context: dict[str, Any],
 ) -> dict[str, Any]:
+    """
+    Create a pending human-review request for a paused workflow stage.
+
+    Args:
+        run_id: Run that requested human review.
+        run_type: Workflow type for the paused run.
+        stage: Pipeline stage that requested review.
+        stage_index: Ordered step index used for resume.
+        context: Serialized workflow context needed to resume.
+
+    Returns:
+        Created review request dictionary.
+    """
+
     request_id = str(uuid.uuid4())
     engine = get_engine()
     query = insert(review_requests).values(
@@ -70,6 +104,14 @@ def create_review_request(
     return created
 
 def attach_review_request_slack_ref(request_id: str, message_ref: str) -> None:
+    """
+    Store the Slack message reference used to notify reviewers.
+
+    Args:
+        request_id: Review request identifier.
+        message_ref: Slack channel and timestamp reference.
+    """
+
     engine = get_engine()
     query = update(review_requests).where(
         review_requests.c.request_id == request_id
@@ -88,6 +130,20 @@ def record_review_decision(
     decision_by: str = "",
     reason: str = "",
 ) -> dict[str, Any]:
+    """
+    Record the first valid decision made for a pending review request.
+
+    Args:
+        request_id: Review request identifier.
+        decision: Reviewer decision, such as approved or disapproved.
+        source: Origin of the decision event.
+        decision_by: Reviewer identity supplied by the source.
+        reason: Optional reviewer reason for the decision.
+
+    Returns:
+        Updated review request dictionary.
+    """
+
     normalized = decision.strip().lower()
     if normalized not in _ALLOWED_DECISIONS:
         raise ValueError(f"Invalid decision: {decision}")
@@ -131,6 +187,17 @@ def mark_review_request_applied(
     request_id: str,
     execution_run_id: str = "",
 ) -> dict[str, Any]:
+    """
+    Mark a decided review request as applied by a resumed execution.
+
+    Args:
+        request_id: Review request identifier.
+        execution_run_id: Run id that applied the decision.
+
+    Returns:
+        Updated review request dictionary.
+    """
+
     engine = get_engine()
     query = update(review_requests).where(
         review_requests.c.request_id == request_id

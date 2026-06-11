@@ -14,6 +14,7 @@ class PRState(TypedDict):
     notes: dict[str, Any]
     final_output: dict[str, Any]
 
+# Prepare request -> Open PR -> Finalize
 def build_pr_graph(nodes) -> StateGraph[PRState]:
     graph = StateGraph(PRState)
     graph.add_node("prepare_request", nodes.prepare_request)

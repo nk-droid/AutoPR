@@ -12,6 +12,16 @@ from core.orchestrator.steps.review import ReviewStep
 from core.orchestrator.steps.triage import TriageStep
 
 def steps_for_run_type(run_type: RunType) -> list[PipelineStep]:
+    """
+    Build the ordered pipeline steps for the selected workflow type.
+
+    Args:
+        run_type: Workflow type requested by the coordinator.
+
+    Returns:
+        Ordered pipeline steps that should execute for the workflow.
+    """
+
     if run_type == RunType.ISSUE_TO_PR:
         # Ordered pipeline from intake to PR open.
         return [

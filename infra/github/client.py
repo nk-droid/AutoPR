@@ -4,6 +4,8 @@ from core.contracts.enums import GitHubIssueSort, GitHubIssueState, GitHubSortDi
 from infra.github.auth import resolve_github_token, resolve_optional_github_token
 
 class GitHubAPIError(RuntimeError):
+    """Wraps GitHub API failures with normalized request and response details."""
+
     def __init__(
         self,
         *,
@@ -65,6 +67,8 @@ def _extract_error_details(payload: Any) -> str:
     return payload_text
 
 class GitHubClient:
+    """Small GitHub REST client used by pipeline stages and webhook helpers."""
+
     def __init__(
         self,
         *,
@@ -79,6 +83,8 @@ class GitHubClient:
         self._owns_client = client is None
 
     def close(self) -> None:
+        """Close the underlying HTTP client when this instance created it."""
+
         if self._owns_client:
             self.client.close()
 
@@ -139,6 +145,22 @@ class GitHubClient:
         sort: GitHubIssueSort | str = GitHubIssueSort.CREATED,
         direction: GitHubSortDirection | str = GitHubSortDirection.ASC,
     ) -> list[dict]:
+        """
+        Fetch repository issues while filtering pull requests from the response.
+
+        Args:
+            repo: Repository full name in owner/name form.
+            state: GitHub issue state to request.
+            labels: Optional comma-separated label filter.
+            per_page: Number of issues requested per page.
+            page: Page number requested from GitHub.
+            sort: GitHub issue sort field.
+            direction: Sort direction for GitHub results.
+
+        Returns:
+            Issue dictionaries excluding pull-request-backed issue records.
+        """
+
         query: dict[str, Any] = {
             "state": GitHubIssueState(state).value,
             "per_page": per_page,
@@ -154,6 +176,17 @@ class GitHubClient:
         return [item for item in payload if isinstance(item, dict) and "pull_request" not in item]
 
     def get_issue(self, repo: str, issue_number: int) -> dict:
+        """
+        Fetch one issue payload from GitHub.
+
+        Args:
+            repo: Repository full name in owner/name form.
+            issue_number: Issue number within the repository.
+
+        Returns:
+            Raw GitHub issue payload as a dictionary.
+        """
+
         payload = self._request("GET", f"/repos/{repo}/issues/{issue_number}")
         if not isinstance(payload, dict):
             raise ValueError("Unexpected GitHub response while getting issue")
@@ -167,6 +200,19 @@ class GitHubClient:
         per_page: int = 20,
         page: int = 1,
     ) -> list[dict]:
+        """
+        Fetch issue comments used as additional task context.
+
+        Args:
+            repo: Repository full name in owner/name form.
+            issue_number: Issue number within the repository.
+            per_page: Number of comments requested per page.
+            page: Page number requested from GitHub.
+
+        Returns:
+            Comment payload dictionaries returned by GitHub.
+        """
+
         payload = self._request(
             "GET",
             f"/repos/{repo}/issues/{issue_number}/comments",
@@ -190,6 +236,22 @@ class GitHubClient:
         draft: bool = False,
         head_repo: str | None = None,
     ) -> dict:
+        """
+        Open a pull request for generated AutoPR changes.
+
+        Args:
+            repo: Repository full name in owner/name form.
+            title: Pull request title.
+            head: Source branch containing generated changes.
+            base: Target branch for the pull request.
+            body: Pull request description body.
+            draft: Whether to create the pull request as a draft.
+            head_repo: Optional fork owner for cross-repository PRs.
+
+        Returns:
+            Raw GitHub pull request payload.
+        """
+
         payload: dict[str, Any] = {
             "title": title,
             "head": head,
@@ -210,12 +272,35 @@ class GitHubClient:
         return payload
 
     def get_pull_request(self, repo: str, pull_number: int) -> dict:
+        """
+        Fetch one pull request payload from GitHub.
+
+        Args:
+            repo: Repository full name in owner/name form.
+            pull_number: Pull request number within the repository.
+
+        Returns:
+            Raw GitHub pull request payload as a dictionary.
+        """
+
         payload = self._request("GET", f"/repos/{repo}/pulls/{pull_number}")
         if not isinstance(payload, dict):
             raise ValueError("Unexpected GitHub response while getting pull request")
         return payload
 
     def list_pull_request_files(self, repo: str, pull_number: int, *, per_page: int = 100) -> list[dict]:
+        """
+        Fetch changed files for a pull request review decision.
+
+        Args:
+            repo: Repository full name in owner/name form.
+            pull_number: Pull request number within the repository.
+            per_page: Number of changed files requested from GitHub.
+
+        Returns:
+            Changed-file payload dictionaries returned by GitHub.
+        """
+
         payload = self._request(
             "GET",
             f"/repos/{repo}/pulls/{pull_number}/files",
@@ -226,6 +311,18 @@ class GitHubClient:
         return [item for item in payload if isinstance(item, dict)]
 
     def comment_on_pull_request(self, *, repo: str, pull_number: int, body: str) -> dict:
+        """
+        Add an issue-style comment to a pull request.
+
+        Args:
+            repo: Repository full name in owner/name form.
+            pull_number: Pull request number within the repository.
+            body: Comment body to publish.
+
+        Returns:
+            Raw GitHub comment payload.
+        """
+
         payload = self._request(
             "POST",
             f"/repos/{repo}/issues/{pull_number}/comments",
@@ -244,6 +341,19 @@ class GitHubClient:
         merge_method: str = "squash",
         commit_title: str | None = None,
     ) -> dict:
+        """
+        Merge an approved pull request using GitHub's merge endpoint.
+
+        Args:
+            repo: Repository full name in owner/name form.
+            pull_number: Pull request number within the repository.
+            merge_method: GitHub merge method such as squash, merge, or rebase.
+            commit_title: Optional commit title for the merge commit.
+
+        Returns:
+            Raw GitHub merge response payload.
+        """
+
         payload: dict[str, Any] = {"merge_method": merge_method}
         if commit_title:
             payload["commit_title"] = commit_title
@@ -258,6 +368,17 @@ class GitHubClient:
         return response_payload
 
 def get_issue(repo: str, issue_number: int) -> dict:
+    """
+    Fetch one issue with a short-lived GitHub client.
+
+    Args:
+        repo: Repository full name in owner/name form.
+        issue_number: Issue number within the repository.
+
+    Returns:
+        Raw GitHub issue payload as a dictionary.
+    """
+
     client = GitHubClient()
     try:
         return client.get_issue(repo, issue_number)

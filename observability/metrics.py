@@ -74,6 +74,13 @@ QA_TOOL_DURATION_SECONDS = Histogram(
 
 _metrics_configured = False
 def configure_metrics(service_name: str | None = None) -> None:
+    """
+    Configure OpenTelemetry metrics once for the current process.
+
+    Args:
+        service_name: Optional service name overriding AUTOPR_SERVICE_NAME.
+    """
+
     global _metrics_configured
     if _metrics_configured:
         return
@@ -127,6 +134,13 @@ def configure_metrics(service_name: str | None = None) -> None:
     _metrics_configured = True
 
 def flush_metrics(timeout_millis: int = 5000) -> None:
+    """
+    Force metric export when the configured provider supports flushing.
+
+    Args:
+        timeout_millis: Maximum time to wait for metric export.
+    """
+
     if not _metrics_configured:
         return
     force_flush = getattr(otel_metrics.get_meter_provider(), "force_flush", None)
@@ -181,12 +195,37 @@ LLM_PARSE_ERRORS_TOTAL = _meter.create_counter(
 )
 
 def observe_stage(run_type, stage, status, duration_sec: float) -> None:
+    """
+    Record pipeline stage result and duration metrics.
+
+    Args:
+        run_type: Workflow type for the completed stage.
+        stage: Pipeline stage that completed.
+        status: Stage status returned by execution.
+        duration_sec: Wall-clock stage duration in seconds.
+    """
+
     labels = [_v(run_type), _v(stage), _v(status)]
     STAGE_RESULTS_TOTAL.labels(*labels).inc()
     STAGE_DURATION_SECONDS.labels(*labels).observe(duration_sec)
 
 def observe_run(run_type, final_state) -> None:
+    """
+    Record a completed pipeline run by workflow type and final state.
+
+    Args:
+        run_type: Workflow type for the completed run.
+        final_state: Final state reached by the run.
+    """
+
     RUNS_TOTAL.labels(_v(run_type), _v(final_state)).inc()
 
 def start_worker_metrics_server(port: int = 9000) -> None:
+    """
+    Start the Prometheus HTTP server used by worker processes.
+
+    Args:
+        port: TCP port for exposing Prometheus metrics.
+    """
+
     start_http_server(port)

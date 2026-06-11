@@ -21,6 +21,7 @@ class ReviewState(TypedDict):
 def is_mergeable_status_unknown(exc: Exception) -> bool:
     return isinstance(exc, MergeabilityUnknownError)
 
+# Evaluate review -> LLM merge-risk review -> Finalize
 def build_review_graph(nodes) -> StateGraph[ReviewState]:
     graph = StateGraph(ReviewState)
     graph.add_node(

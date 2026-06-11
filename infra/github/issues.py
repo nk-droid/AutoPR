@@ -20,6 +20,23 @@ def get_issues(
     direction: GitHubSortDirection | str = GitHubSortDirection.ASC,
     token: str | None = None,
 ) -> list[dict]:
+    """
+    Fetch repository issues using the configured GitHub issue filters.
+
+    Args:
+        repo: Repository full name in owner/name form.
+        state: GitHub issue state to request.
+        labels: Optional comma-separated label filter.
+        per_page: Number of issues requested per page.
+        page: Page number requested from GitHub.
+        sort: GitHub issue sort field.
+        direction: Sort direction for GitHub results.
+        token: Optional GitHub token override.
+
+    Returns:
+        Issue dictionaries returned by GitHub after client filtering.
+    """
+
     client = GitHubClient(token=token)
     try:
         return client.list_issues(
@@ -35,6 +52,17 @@ def get_issues(
         client.close()
 
 def resolve_issue_reference(issue_reference: str | int, repo: str | None = None) -> tuple[str, int]:
+    """
+    Resolve an issue number, shorthand, or GitHub URL into repository details.
+
+    Args:
+        issue_reference: Issue number, #number shorthand, or full issue URL.
+        repo: Repository full name required for numeric references.
+
+    Returns:
+        Repository full name and numeric issue number.
+    """
+
     if isinstance(issue_reference, int):
         if not repo:
             raise ValueError("repo is required when issue reference is numeric")
@@ -72,6 +100,21 @@ def get_issue_details(
     comments_per_page: int = 20,
     comments_page: int = 1,
 ) -> dict:
+    """
+    Fetch a resolved GitHub issue and optionally include comment context.
+
+    Args:
+        issue_reference: Issue number, #number shorthand, or full issue URL.
+        repo: Repository full name required for numeric references.
+        token: Optional GitHub token override.
+        include_comments: Whether to attach issue comments to the payload.
+        comments_per_page: Number of comments requested per page.
+        comments_page: Page number requested for comments.
+
+    Returns:
+        Issue payload, optionally including comments_items.
+    """
+
     resolved_repo, issue_number = resolve_issue_reference(issue_reference, repo)
     client = GitHubClient(token=token)
     try:
@@ -106,6 +149,17 @@ def pick_issue(
     *,
     strategy: GitHubIssuePickStrategy | str = GitHubIssuePickStrategy.OLDEST_OPEN,
 ) -> dict:
+    """
+    Select one issue from candidates using the configured queueing strategy.
+
+    Args:
+        issues: Candidate issue payloads fetched from GitHub.
+        strategy: Selection strategy for prioritizing the next issue.
+
+    Returns:
+        Chosen issue payload.
+    """
+
     if not issues:
         raise ValueError("No issues available to pick from")
     try:
@@ -145,6 +199,22 @@ def get_and_pick_issue(
     page: int = 1,
     token: str | None = None,
 ) -> dict:
+    """
+    Fetch available issues and select the next one for AutoPR processing.
+
+    Args:
+        repo: Repository full name in owner/name form.
+        strategy: Selection strategy for prioritizing the next issue.
+        state: GitHub issue state to request.
+        labels: Optional comma-separated label filter.
+        per_page: Number of issues requested per page.
+        page: Page number requested from GitHub.
+        token: Optional GitHub token override.
+
+    Returns:
+        Chosen issue payload.
+    """
+
     issues = get_issues(
         repo,
         state=state,

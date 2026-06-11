@@ -14,6 +14,7 @@ class TriageState(TypedDict):
     status: AmbiguityStatus
     final_output: dict[str, Any]
 
+# Extract task -> Assess risk -> Detect ambiguity -> Finalize
 def build_triage_graph(nodes) -> StateGraph[TriageState]:
     graph = StateGraph(TriageState)
 

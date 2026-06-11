@@ -17,6 +17,7 @@ class CodeState(TypedDict):
     notes: dict
     final_output: CodeOutput
 
+# Understand task -> Locate files -> Generate patch -> Validate patch -> Finalize
 def build_code_graph(nodes) -> StateGraph[CodeState]:
     graph = StateGraph(CodeState)
 

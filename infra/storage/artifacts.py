@@ -14,6 +14,16 @@ def upsert_run(
     run_type: str,
     payload: dict[str, Any],
 ) -> None:
+    """
+    Persist the latest run snapshot for recovery and status lookup.
+
+    Args:
+        run_id: Stable run identifier.
+        state: Current workflow state.
+        run_type: Workflow type associated with the run.
+        payload: Serialized run model payload.
+    """
+
     engine = get_engine()
     # Perform an atomic upsert on postgres conflict
     stmt = pg_insert(runs).values(
@@ -38,6 +48,15 @@ def upsert_run(
         conn.execute(stmt)
 
 def record_run_event(run_id: str, event_type: str, payload: dict[str, Any]) -> None:
+    """
+    Append an immutable event to a run's audit timeline.
+
+    Args:
+        run_id: Run identifier that owns the event.
+        event_type: Event name describing the workflow occurrence.
+        payload: Structured event context for audit and debugging.
+    """
+
     engine = get_engine()
     query = run_events.insert().values(
         run_id=run_id,
@@ -49,6 +68,18 @@ def record_run_event(run_id: str, event_type: str, payload: dict[str, Any]) -> N
         conn.execute(query)
 
 def save_artifact(run_id: str, key: str, value: dict) -> dict:
+    """
+    Upsert a named artifact produced during a pipeline run.
+
+    Args:
+        run_id: Run identifier that owns the artifact.
+        key: Artifact key unique within the run.
+        value: Structured artifact payload to persist.
+
+    Returns:
+        Small confirmation payload identifying the saved artifact.
+    """
+
     engine = get_engine()
     # Perform an atomic upsert on conflict
     stmt = pg_insert(artifacts).values(
@@ -70,6 +101,16 @@ def save_artifact(run_id: str, key: str, value: dict) -> dict:
     return {"run_id": run_id, "key": key, "saved": True}
 
 def _load_events(run_id: str) -> list[StoredRunEvent]:
+    """
+    Load persisted audit events for a run.
+
+    Args:
+        run_id: Run identifier whose events should be fetched.
+
+    Returns:
+        Stored run events in database row order.
+    """
+
     engine = get_engine()
     query = select(run_events).where(
         run_events.c.run_id == run_id
@@ -88,6 +129,16 @@ def _load_events(run_id: str) -> list[StoredRunEvent]:
     ]
 
 def _load_artifacts(run_id: str) -> list[StoredArtifact]:
+    """
+    Load persisted artifacts attached to a run.
+
+    Args:
+        run_id: Run identifier whose artifacts should be fetched.
+
+    Returns:
+        Stored artifacts attached to the run.
+    """
+
     engine = get_engine()
     query = artifacts.select().where(
         artifacts.c.run_id == run_id
@@ -105,6 +156,16 @@ def _load_artifacts(run_id: str) -> list[StoredArtifact]:
     ]
 
 def load_run(run_id: str) -> StoredRun | None:
+    """
+    Load a run snapshot with its artifacts and event timeline.
+
+    Args:
+        run_id: Run identifier to load from storage.
+
+    Returns:
+        Stored run aggregate, or None when the run does not exist.
+    """
+
     engine = get_engine()
     query = runs.select().where(
         runs.c.run_id == run_id
