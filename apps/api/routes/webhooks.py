@@ -7,6 +7,8 @@ from apps.api.schemas.webhooks import GitHubWebhookResponse
 from infra.github.webhook_handler import handle_github_webhook
 from infra.redis.webhook_queue import RedisWebhookQueue
 
+from core.contracts.enums import WebhookResultType
+
 from observability.tracing import traced
 from observability.metrics import WEBHOOKS_TOTAL, WEBHOOK_JOBS_ENQUEUED_TOTAL
 
@@ -14,6 +16,13 @@ router = APIRouter(prefix="/webhooks", tags=["webhooks"])
 
 @lru_cache
 def get_webhook_queue() -> RedisWebhookQueue:
+    """
+    Return the process-local Redis webhook queue singleton.
+
+    Returns:
+        Redis webhook queue configured from environment variables.
+    """
+
     return RedisWebhookQueue.from_env()
 
 def _github_webhook_attributes(
@@ -22,6 +31,19 @@ def _github_webhook_attributes(
     x_github_delivery: str,
     x_hub_signature_256: str | None = None,
 ) -> dict:
+    """
+    Build trace attributes for the GitHub webhook API route.
+
+    Args:
+        request: FastAPI request being handled.
+        x_github_event: GitHub event header value.
+        x_github_delivery: GitHub delivery identifier.
+        x_hub_signature_256: Optional GitHub signature header.
+
+    Returns:
+        Span attributes describing the inbound webhook request.
+    """
+
     return {
         "http.request.method": request.method,
         "http.route": "/webhooks/github",
@@ -38,6 +60,19 @@ async def github_webhook(
     x_github_delivery: str = Header(..., alias="X-GitHub-Delivery"),
     x_hub_signature_256: str | None = Header(default=None, alias="X-Hub-Signature-256"),
 ) -> GitHubWebhookResponse:
+    """
+    Accept a GitHub webhook, filter it, and enqueue resulting jobs.
+
+    Args:
+        request: FastAPI request containing the raw webhook body.
+        x_github_event: GitHub event header value.
+        x_github_delivery: GitHub delivery identifier.
+        x_hub_signature_256: Optional GitHub signature header.
+
+    Returns:
+        API response describing accepted, ignored, and queued work.
+    """
+
     body = await request.body()
 
     # Parse and filter webhook payload synchronously before queuing background work.
@@ -48,7 +83,7 @@ async def github_webhook(
         signature_256=x_hub_signature_256,
     )
 
-    result_label = "accepted" if result.jobs else "ignored"
+    result_label = WebhookResultType.ACCEPTED if result.jobs else WebhookResultType.IGNORED
     WEBHOOKS_TOTAL.labels(event_type=x_github_event, result=result_label).inc()
 
     span = trace.get_current_span()
@@ -57,6 +92,8 @@ async def github_webhook(
     if result.ignored_reason:
         span.set_attribute("autopr.webhook.ignored_reason", result.ignored_reason)
 
+    # Enqueue background work for accepted webhooks; failures here indicate transient issues with
+    # the queue and should be retried by GitHub.
     queue = get_webhook_queue()
     try:
         for job in result.jobs:
@@ -69,7 +106,7 @@ async def github_webhook(
         raise HTTPException(status_code=503, detail="Webhook queue unavailable") from exc
 
     return GitHubWebhookResponse(
-        status="accepted",
+        status=WebhookResultType.ACCEPTED,
         event_type=x_github_event,
         delivery_id=x_github_delivery,
         queued_runs=len(result.jobs),
