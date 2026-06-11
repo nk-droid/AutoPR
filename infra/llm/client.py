@@ -1,3 +1,4 @@
+import os
 from typing import NamedTuple
 
 from langchain_openai import ChatOpenAI
@@ -5,8 +6,7 @@ from langchain_ollama import ChatOllama
 from langchain_anthropic import ChatAnthropic
 from langchain_google_genai import ChatGoogleGenerativeAI
 
-from dotenv import load_dotenv
-load_dotenv()
+from infra.llm.registry import registry
 
 PROVIDER_MAPPING = {
     "openai": ChatOpenAI,
@@ -15,54 +15,32 @@ PROVIDER_MAPPING = {
     "google": ChatGoogleGenerativeAI,
 }
 
+_DEFAULT_PROVIDER = "ollama"
+_DEFAULT_MODEL_NAME = "qwen3-coder"
+
 class LLMClient(NamedTuple):
     client: object
     provider: str
-    model: str
+    model: str  # underlying model id; also the gateway rate-limit routing key
 
 def create_client(
     *,
-    provider: str = "ollama",
-    model: str = "qwen3-coder:480b-cloud",
-    endpoint: str | None = "http://host.docker.internal:11434",
-    timeout_seconds: int = 300,
+    provider: str | None = None,
+    model_name: str | None = None,
 ) -> LLMClient:
-    cls = PROVIDER_MAPPING[provider]
-    kwargs: dict = {"model": model}
-    if provider == "ollama" and endpoint:
-        kwargs["base_url"] = endpoint
-    return LLMClient(client=cls(**kwargs), provider=provider, model=model)
+    provider = provider or os.getenv("AUTOPR_LLM_PROVIDER", _DEFAULT_PROVIDER)
+    model_name = model_name or os.getenv("AUTOPR_LLM_MODEL_NAME", _DEFAULT_MODEL_NAME)
 
-if __name__ == "__main__":
-    from langchain_core.prompts import PromptTemplate
-    from langchain_classic.output_parsers import PydanticOutputParser
-    from pydantic import Field, BaseModel
+    cfg = registry.get_model(provider, model_name)
 
-    class Summary(BaseModel):
-        summary: str = Field(..., description="Paragraph of the text")
+    kwargs = {"model": cfg["model"]}
+    if provider == "ollama" and cfg.get("endpoint"):
+        kwargs["base_url"] = cfg["endpoint"]
 
-    template = """
-Give a paragraph on of the following topic:
-{text}
+    client = PROVIDER_MAPPING[provider](**kwargs)
 
-Return the answer the following format:
-{format_instructions}
-"""
-
-    parser = PydanticOutputParser(pydantic_object=Summary)
-    prompt = PromptTemplate(
-        template=template,
-        input_variables=["text"],
-        partial_variables={"format_instructions": parser.get_format_instructions()}
+    return LLMClient(
+        client=client,
+        provider=provider,
+        model=cfg["model"],
     )
-
-    llm = create_client()
-    chain = prompt | llm.client
-    full_chain = chain | parser
-
-    result = chain.invoke({
-        "text": "Responsible AI"
-    })
-
-    print(dir(result))
-    print(result.usage_metadata)

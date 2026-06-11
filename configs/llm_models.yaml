@@ -1,0 +1,85 @@
+providers:
+
+  ollama:
+    endpoint: http://host.docker.internal:11434
+
+    limits:
+      max_rpm: 1000
+      max_concurrent: 4
+
+    models:
+      qwen3-coder:
+        model: qwen3-coder:480b-cloud
+        pricing:
+          input_per_1m_tokens_usd: 0.0
+          output_per_1m_tokens_usd: 0.0
+
+      deepseek-r1:
+        model: deepseek-r1:70b
+        pricing:
+          input_per_1m_tokens_usd: 0.0
+          output_per_1m_tokens_usd: 0.0
+
+        limits:
+          max_concurrent: 2
+
+  anthropic:
+    limits:
+      max_rpm: 50
+      max_concurrent: 10
+
+    models:
+      sonnet:
+        model: claude-sonnet-4
+        pricing:
+          input_per_1m_tokens_usd: 3.0
+          output_per_1m_tokens_usd: 15.0
+
+      opus:
+        model: claude-opus-4
+        pricing:
+          input_per_1m_tokens_usd: 15.0
+          output_per_1m_tokens_usd: 75.0
+
+        limits:
+          max_rpm: 20
+          max_concurrent: 3
+
+  google:
+    limits:
+      max_rpm: 100
+      max_concurrent: 20
+
+    models:
+      pro:
+        model: gemini-2.5-pro
+        pricing:
+          input_per_1m_tokens_usd: 1.25
+          output_per_1m_tokens_usd: 10.0
+
+      flash:
+        model: gemini-2.5-flash
+        pricing:
+          input_per_1m_tokens_usd: 0.3
+          output_per_1m_tokens_usd: 2.5
+
+        limits:
+          max_rpm: 500
+
+  openai:
+    limits:
+      max_rpm: 100
+      max_concurrent: 20
+
+    models:
+      gpt-4.1:
+        model: gpt-4.1
+        pricing:
+          input_per_1m_tokens_usd: 2.0
+          output_per_1m_tokens_usd: 8.0
+
+      gpt-4.1-mini:
+        model: gpt-4.1-mini
+        pricing:
+          input_per_1m_tokens_usd: 0.4
+          output_per_1m_tokens_usd: 1.6

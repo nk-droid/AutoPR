@@ -6,22 +6,11 @@ from langchain_core.output_parsers import PydanticOutputParser
 
 from infra.llm.client import LLMClient, create_client
 from infra.llm.callbacks import LLMMetricsCallbackHandler
+from infra.llm.gateway import gateway
 from observability.tracing import traced, llm_chain_attrs
 from observability.metrics import LLM_PARSE_ERRORS_TOTAL
 
 ModelT = TypeVar("ModelT", bound=BaseModel)
-
-def build_chain_parser(
-    *,
-    template: str,
-    input_vars: list[str],
-    output_model: type[ModelT],
-    client: LLMClient,
-) -> tuple[Any, PydanticOutputParser]:
-    parser = PydanticOutputParser(pydantic_object=output_model)
-    prompt = PromptTemplate(template=template, input_variables=input_vars)
-    chain = prompt | client.client | parser
-    return chain, parser
 
 @traced("llm.invoke_chain", attributes=llm_chain_attrs)
 def invoke_chain(
@@ -35,17 +24,33 @@ def invoke_chain(
     client: LLMClient | None = None,
     include_format_instructions: bool = False,
 ) -> ModelT:
+    """
+    Invoke an LLM prompt and parse the response into a Pydantic model.
+
+    Args:
+        template: Prompt template string passed to LangChain.
+        input_vars: Prompt variable names expected by the template.
+        output_model: Pydantic model required from the LLM response.
+        variables: Runtime values bound into the prompt template.
+        agent: Agent name used for metrics and tracing labels.
+        node: Node name used for metrics and tracing labels.
+        client: Optional LLM client override for tests or custom routing.
+        include_format_instructions: Whether parser instructions enter the prompt.
+
+    Returns:
+        Parsed and validated output model instance.
+    """
+
     client = client or create_client()
-    chain, parser = build_chain_parser(
-        template=template,
-        input_vars=input_vars,
-        output_model=output_model,
-        client=client,
-    )
+
+    parser = PydanticOutputParser(pydantic_object=output_model)
+    prompt = PromptTemplate(template=template, input_variables=input_vars)
 
     invoke_payload = dict(variables)
     if include_format_instructions:
         invoke_payload["format_instructions"] = parser.get_format_instructions()
+
+    prompt_value = prompt.invoke(invoke_payload)
 
     handler = LLMMetricsCallbackHandler(
         provider=client.provider,
@@ -55,15 +60,19 @@ def invoke_chain(
         output_model=output_model.__name__,
     )
 
-    try:
-        response = chain.invoke(invoke_payload, config={"callbacks": [handler]})
-    except Exception:
-        raise  # handler.on_llm_error already fired for LLM-layer errors
+    # Model call goes through the gateway for per-model rate limiting + concurrency.
+    response = gateway.invoke(
+        provider=client.provider,
+        model=client.model,
+        prompt=prompt_value,
+        config={"callbacks": [handler]},
+    )
 
     try:
-        if isinstance(response, output_model):
-            return response
-        return output_model.model_validate(response)
+        parsed = parser.invoke(response)
+        if isinstance(parsed, output_model):
+            return parsed
+        return output_model.model_validate(parsed)
     except Exception:
         LLM_PARSE_ERRORS_TOTAL.add(
             1,
