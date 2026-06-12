@@ -15,6 +15,7 @@ from infra.storage.review_requests import (
 
 router = APIRouter(prefix="/internal", tags=["internal"])
 
+
 def _comment_on_disapproved_review(context: dict[str, Any]) -> str:
     repository = context.get("repository")
     pull_request_number = context.get("pull_request_number")
@@ -40,6 +41,7 @@ def _comment_on_disapproved_review(context: dict[str, Any]) -> str:
     finally:
         client.close()
     return ""
+
 
 @router.get("/review/decision")
 async def review_decision(

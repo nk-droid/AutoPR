@@ -10,10 +10,12 @@ from infra.slack.notification import decode_review_action_token
 from infra.slack.notification import send_needs_review_notification
 from infra.slack.notification import send_review_decision_notification
 
+
 class _FakeResponse:
     def __init__(self, status_code: int, text: str = "") -> None:
         self.status_code = status_code
         self.text = text
+
 
 def _run() -> RunModel:
     return RunModel(
@@ -23,6 +25,7 @@ def _run() -> RunModel:
         issue_number=14,
     )
 
+
 def _stage_result() -> StageResult:
     return StageResult(
         stage="triage",
@@ -30,6 +33,7 @@ def _stage_result() -> StageResult:
         outputs={"summary": "summary fallback"},
         notes={"reason": "policy blocked"},
     )
+
 
 def test_review_action_token_roundtrip(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("REVIEW_ACTION_TOKEN_SECRET", "secret")
@@ -41,6 +45,7 @@ def test_review_action_token_roundtrip(monkeypatch: pytest.MonkeyPatch) -> None:
 
     assert request_id == "request-1"
     assert decision == "approved"
+
 
 def test_review_action_token_invalid_and_expired(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("REVIEW_ACTION_TOKEN_SECRET", "secret")
@@ -55,6 +60,7 @@ def test_review_action_token_invalid_and_expired(monkeypatch: pytest.MonkeyPatch
     with pytest.raises(ValueError, match="Token expired"):
         decode_review_action_token(token)
 
+
 def test_send_needs_review_notification_disabled(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("SLACK_NOTIFY_NEEDS_REVIEW", "false")
     monkeypatch.setenv("SLACK_WEBHOOK_URL", "https://example.invalid/webhook")
@@ -62,6 +68,7 @@ def test_send_needs_review_notification_disabled(monkeypatch: pytest.MonkeyPatch
     result = send_needs_review_notification(_run(), _stage_result(), {"request_id": "rq1"})
 
     assert result == {"sent": False, "message_ref": "", "reason": "disabled"}
+
 
 def test_send_needs_review_notification_missing_inputs(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("SLACK_NOTIFY_NEEDS_REVIEW", raising=False)
@@ -73,6 +80,7 @@ def test_send_needs_review_notification_missing_inputs(monkeypatch: pytest.Monke
     monkeypatch.setenv("REVIEW_ACTION_TOKEN_SECRET", "secret")
     missing_request = send_needs_review_notification(_run(), _stage_result(), {"request_id": ""})
     assert missing_request == {"sent": False, "message_ref": "", "reason": "missing_request_id"}
+
 
 def test_send_needs_review_notification_success(monkeypatch: pytest.MonkeyPatch) -> None:
     calls: list[dict[str, object]] = []
@@ -106,6 +114,7 @@ def test_send_needs_review_notification_success(monkeypatch: pytest.MonkeyPatch)
     urls = [item["url"] for item in blocks[3]["elements"]]
     assert "https://autopr.internal/runs/4bf96c14-423f-431c-b172-b6e74585176a" in urls
 
+
 def test_send_needs_review_notification_http_error(monkeypatch: pytest.MonkeyPatch) -> None:
     def _fake_post(url: str, json: dict, timeout: int) -> _FakeResponse:
         del url
@@ -125,6 +134,7 @@ def test_send_needs_review_notification_http_error(monkeypatch: pytest.MonkeyPat
     assert result["reason"] == "slack_http_502"
     assert len(result["response_text"]) == 500
 
+
 def test_send_review_decision_notification_paths(monkeypatch: pytest.MonkeyPatch) -> None:
     with pytest.raises(ValueError, match="Invalid token format"):
         decode_review_action_token("bad-token")
@@ -136,7 +146,10 @@ def test_send_review_decision_notification_paths(monkeypatch: pytest.MonkeyPatch
     missing = send_review_decision_notification(request_id="r1", decision="approved")
     assert missing == {"sent": False, "reason": "missing_webhook"}
 
-def test_send_review_decision_notification_success_and_error(monkeypatch: pytest.MonkeyPatch) -> None:
+
+def test_send_review_decision_notification_success_and_error(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     calls: list[dict[str, object]] = []
 
     def _ok_post(url: str, json: dict, timeout: int) -> _FakeResponse:

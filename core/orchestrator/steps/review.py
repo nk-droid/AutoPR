@@ -16,6 +16,7 @@ from observability.tracing import pipeline_step_attrs, traced
 
 _SOFT_GATE_RISKS = {"medium", "high"}
 
+
 def _compact_pull_request_files(files: list[dict[str, Any]]) -> list[dict[str, Any]]:
     compact: list[dict[str, Any]] = []
     for item in files:
@@ -35,6 +36,7 @@ def _compact_pull_request_files(files: list[dict[str, Any]]) -> list[dict[str, A
         )
     return compact
 
+
 def _external_policy_findings(decision: MergeDecision | None) -> list[PolicyFinding]:
     if decision is None or decision.allowed:
         return []
@@ -46,6 +48,7 @@ def _external_policy_findings(decision: MergeDecision | None) -> list[PolicyFind
         )
     ]
 
+
 def _choose_policy_decision(
     *,
     computed: MergeDecision,
@@ -54,6 +57,7 @@ def _choose_policy_decision(
     if external is not None and not external.allowed:
         return external
     return computed
+
 
 def _comment_on_pr(
     *,
@@ -78,6 +82,7 @@ def _comment_on_pr(
     finally:
         client.close()
     return ""
+
 
 def _review_block_findings(result: StageResult) -> list[PolicyFinding]:
     outputs = result.outputs if isinstance(result.outputs, dict) else {}
@@ -104,6 +109,7 @@ def _review_block_findings(result: StageResult) -> list[PolicyFinding]:
             )
         )
     return findings
+
 
 class ReviewStep(PipelineStep):
     stage = PipelineStage.REVIEW
@@ -161,7 +167,9 @@ class ReviewStep(PipelineStep):
             client.close()
 
         # Refresh PR metadata from GitHub so review logic uses canonical state.
-        context["pull_request_url"] = pull_request.get("html_url") or context.get("pull_request_url")
+        context["pull_request_url"] = pull_request.get("html_url") or context.get(
+            "pull_request_url"
+        )
         context["pull_request_state"] = pull_request.get("state")
         context["pull_request_draft"] = bool(pull_request.get("draft", False))
         mergeable = pull_request.get("mergeable")
@@ -176,7 +184,10 @@ class ReviewStep(PipelineStep):
             computed=policy.decision,
             external=external_policy_decision,
         )
-        policy_findings = [*policy.public_findings, *_external_policy_findings(external_policy_decision)]
+        policy_findings = [
+            *policy.public_findings,
+            *_external_policy_findings(external_policy_decision),
+        ]
         context["policy_decision"] = policy_decision.model_dump()
         context["policy_public_findings"] = [finding.model_dump() for finding in policy_findings]
         if not policy_decision.allowed:
@@ -204,10 +215,19 @@ class ReviewStep(PipelineStep):
         payload.setdefault("repository", repository)
         payload.setdefault("pull_request_number", pull_request_number)
         payload.setdefault("review_approved", bool(context.get("review_approved", False)))
-        payload.setdefault("execute_remote_actions", bool(context.get("execute_remote_actions", False)))
-        payload.setdefault("metadata", context.get("metadata") if isinstance(context.get("metadata"), dict) else dict(run.metadata))
+        payload.setdefault(
+            "execute_remote_actions", bool(context.get("execute_remote_actions", False))
+        )
+        payload.setdefault(
+            "metadata",
+            context.get("metadata")
+            if isinstance(context.get("metadata"), dict)
+            else dict(run.metadata),
+        )
         review_context = PRToMergeContext(**payload)
-        return runtime.run_worker(self.stage, ReviewWorker.remote(), ReviewWorkerInput(context=review_context))
+        return runtime.run_worker(
+            self.stage, ReviewWorker.remote(), ReviewWorkerInput(context=review_context)
+        )
 
     def after(
         self,

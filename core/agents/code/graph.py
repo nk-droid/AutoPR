@@ -6,6 +6,7 @@ from core.contracts.plan import PlanStep
 
 from core.orchestrator.models import StageStatus
 
+
 class CodeState(TypedDict):
     step: PlanStep
     repo_map: str
@@ -17,6 +18,7 @@ class CodeState(TypedDict):
     status: StageStatus
     notes: dict
     final_output: CodeOutput
+
 
 # Understand task -> Locate files -> Generate patch -> Validate patch -> Finalize
 def build_code_graph(nodes) -> StateGraph[CodeState]:

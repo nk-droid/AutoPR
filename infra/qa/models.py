@@ -1,12 +1,14 @@
 from typing import Any
 from pydantic import BaseModel, Field
 
+
 class CommandResult(BaseModel):
     success: bool
     exit_code: int
     stdout: str
     stderr: str
     duration_sec: float
+
 
 class TestResult(BaseModel):
     success: bool
@@ -16,9 +18,11 @@ class TestResult(BaseModel):
     errors: list[str] = Field(default_factory=list)
     raw_output: str = ""
 
+
 class CoverageFile(BaseModel):
     path: str
     coverage_pct: float
+
 
 class CoverageResult(BaseModel):
     success: bool
@@ -27,16 +31,19 @@ class CoverageResult(BaseModel):
     files: list[CoverageFile] = Field(default_factory=list)
     raw_output: str = ""
 
+
 class LintIssue(BaseModel):
     file: str
     line: int
     code: str
     message: str
 
+
 class LintResult(BaseModel):
     success: bool
     issues: list[LintIssue] = Field(default_factory=list)
     raw_output: str = ""
+
 
 class SecurityIssue(BaseModel):
     severity: str
@@ -44,10 +51,12 @@ class SecurityIssue(BaseModel):
     line: int
     issue: str
 
+
 class SecurityResult(BaseModel):
     success: bool
     issues: list[SecurityIssue] = Field(default_factory=list)
     raw_output: str = ""
+
 
 class QAResult(BaseModel):
     passed: bool

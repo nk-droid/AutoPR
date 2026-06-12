@@ -13,14 +13,17 @@ from observability.tracing import traced, langgraph_node_attrs
 
 _REQUIRED_TOOLS = ("lint", "tests", "coverage", "security")
 
+
 def _tail(text: str, max_chars: int = 1200) -> str:
     if len(text) <= max_chars:
         return text
     return text[-max_chars:]
 
+
 def _payload_text(payload: dict[str, Any], key: str) -> str:
     value = payload.get(key)
     return value if isinstance(value, str) else ""
+
 
 def _tool_result_to_check(tool_name: str, result: ToolRunResult | None) -> QACheck:
     if result is None:
@@ -32,11 +35,11 @@ def _tool_result_to_check(tool_name: str, result: ToolRunResult | None) -> QAChe
 
     payload = result.payload
     details_parts = {
-        'status': result.status.value,
-        'reason': _payload_text(payload, 'reason'),
-        'raw_output': _tail(_payload_text(payload, 'raw_output')),
-        'stdout': _tail(_payload_text(payload, 'stdout')),
-        'stderr': _tail(_payload_text(payload, 'stderr')),
+        "status": result.status.value,
+        "reason": _payload_text(payload, "reason"),
+        "raw_output": _tail(_payload_text(payload, "raw_output")),
+        "stdout": _tail(_payload_text(payload, "stdout")),
+        "stderr": _tail(_payload_text(payload, "stderr")),
     }
 
     return QACheck(
@@ -44,6 +47,7 @@ def _tool_result_to_check(tool_name: str, result: ToolRunResult | None) -> QAChe
         status=result.status,
         details=details_parts,
     )
+
 
 def _as_test_result(result: ToolRunResult | None) -> TestResult:
     if result is None:
@@ -56,6 +60,7 @@ def _as_test_result(result: ToolRunResult | None) -> TestResult:
     except Exception:
         return TestResult(success=False)
 
+
 def _as_coverage_result(result: ToolRunResult | None) -> CoverageResult:
     if result is None:
         return CoverageResult(success=False, coverage_pct=0.0, threshold_passed=False)
@@ -66,6 +71,7 @@ def _as_coverage_result(result: ToolRunResult | None) -> CoverageResult:
         return CoverageResult.model_validate(payload)
     except Exception:
         return CoverageResult(success=False, coverage_pct=0.0, threshold_passed=False)
+
 
 def _as_lint_result(result: ToolRunResult | None) -> LintResult:
     if result is None:
@@ -78,6 +84,7 @@ def _as_lint_result(result: ToolRunResult | None) -> LintResult:
     except Exception:
         return LintResult(success=False)
 
+
 def _as_security_result(result: ToolRunResult | None) -> SecurityResult:
     if result is None:
         return SecurityResult(success=False)
@@ -88,6 +95,7 @@ def _as_security_result(result: ToolRunResult | None) -> SecurityResult:
         return SecurityResult.model_validate(payload)
     except Exception:
         return SecurityResult(success=False)
+
 
 @traced(
     "qa_step.evaluate_inputs",
@@ -127,7 +135,9 @@ def evaluate_inputs(state: dict[str, Any]) -> dict[str, Any]:
 
     # check if tool_results is valid
     tool_results = state.get("tool_results")
-    if not isinstance(tool_results, list) or any(not isinstance(item, ToolRunResult) for item in tool_results):
+    if not isinstance(tool_results, list) or any(
+        not isinstance(item, ToolRunResult) for item in tool_results
+    ):
         state["status"] = StageStatus.BLOCKED
         state["summary"] = "QA blocked: tool_results must be list[ToolRunResult]."
         state["notes"] = {"blocking_reason": "invalid_tool_results"}
@@ -135,6 +145,7 @@ def evaluate_inputs(state: dict[str, Any]) -> dict[str, Any]:
 
     state["status"] = StageStatus.OK
     return state
+
 
 @traced(
     "qa_step.run_checks",
@@ -154,7 +165,7 @@ def run_checks(state: dict[str, Any]) -> dict[str, Any]:
             // other state variables...
         }
         ```
-    
+
     Returns:
         An updated state dictionary with the results of the QA checks, a summary, and notes. The status may be updated to OK, NEEDS_REVIEW, or BLOCKED based on the checks.
     """
@@ -162,7 +173,11 @@ def run_checks(state: dict[str, Any]) -> dict[str, Any]:
     coding_output = state.get("coding_output")
     coding_step = state.get("coding_step")
     tool_results = state.get("tool_results")
-    if not isinstance(coding_output, CodeOutput) or not isinstance(coding_step, PlanStep) or not isinstance(tool_results, list):
+    if (
+        not isinstance(coding_output, CodeOutput)
+        or not isinstance(coding_step, PlanStep)
+        or not isinstance(tool_results, list)
+    ):
         state["status"] = StageStatus.BLOCKED
         state["summary"] = "QA blocked: invalid typed inputs."
         state["notes"] = {"blocking_reason": "invalid_inputs"}
@@ -245,6 +260,7 @@ def run_checks(state: dict[str, Any]) -> dict[str, Any]:
 
     return state
 
+
 @traced(
     "qa_step.finalize",
     attributes=langgraph_node_attrs("qa", "finalize"),
@@ -264,17 +280,21 @@ def finalize(state: dict[str, Any]) -> dict[str, Any]:
             // other state variables...
         }
         ```
-    
+
     Returns:
         An updated state dictionary with the final QA output added.
     """
-    
+
     raw_checks = state.get("checks", [])
-    checks = raw_checks if isinstance(raw_checks, list) and all(isinstance(item, QACheck) for item in raw_checks) else []
+    checks = (
+        raw_checks
+        if isinstance(raw_checks, list) and all(isinstance(item, QACheck) for item in raw_checks)
+        else []
+    )
     stage_status = state.get("status", StageStatus.BLOCKED)
     if not isinstance(stage_status, StageStatus):
         stage_status = StageStatus.BLOCKED
-    
+
     summary = state.get("summary", "")
     notes = state.get("notes", {})
 
@@ -284,9 +304,9 @@ def finalize(state: dict[str, Any]) -> dict[str, Any]:
         checks=checks,
         notes=notes if isinstance(notes, dict) else {},
     )
-    
+
     state["status"] = stage_status
     state["checks"] = checks
     state["final_output"] = result.model_dump(mode="json")
-    
+
     return state

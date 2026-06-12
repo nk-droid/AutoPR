@@ -5,18 +5,34 @@ import logging
 import os
 import re
 from typing import Any, Union
-from core.contracts.enums import GitHubPullRequestReviewAction, GitHubPullRequestState, GitHubReviewState, GitHubWebhookEventType, RunState
+from core.contracts.enums import (
+    GitHubPullRequestReviewAction,
+    GitHubPullRequestState,
+    GitHubReviewState,
+    GitHubWebhookEventType,
+    RunState,
+)
 from core.contracts.run_context import IssueToPRContext as PipelineIssueToPRContext
 from core.contracts.run_context import PRToMergeContext as PipelinePRToMergeContext
 from core.orchestrator.coordinator import Coordinator
 from core.orchestrator.models import IssueActions, RunModel, RunType
 from core.orchestrator.resume import resume_after_approval
-from infra.github.models import GitHubRepo, GitHubWebhookEventMetadata, IssuePayload, IssueToPRContext, PRReviewPayload, PRToMergeContext, WebhookDispatchResult, WebhookHandleResult
+from infra.github.models import (
+    GitHubRepo,
+    GitHubWebhookEventMetadata,
+    IssuePayload,
+    IssueToPRContext,
+    PRReviewPayload,
+    PRToMergeContext,
+    WebhookDispatchResult,
+    WebhookHandleResult,
+)
 
 logger = logging.getLogger(__name__)
 
 ISSUE_RUN_COMMAND = re.compile(r"(?im)^/autopr\s+run\b")
 PR_MERGE_COMMAND = re.compile(r"(?im)^/autopr\s+merge\b")
+
 
 def _env_flag(name: str, default: bool) -> bool:
     raw = os.getenv(name)
@@ -24,6 +40,7 @@ def _env_flag(name: str, default: bool) -> bool:
         return default
 
     return str(raw).strip().lower() in {"1", "true", "yes", "y", "on"}
+
 
 def _verify_signature(body: bytes, signature_256: str | None) -> None:
     secret = os.getenv("GITHUB_WEBHOOK_SECRET", "")
@@ -54,12 +71,12 @@ def _verify_signature(body: bytes, signature_256: str | None) -> None:
         )
         raise PermissionError("Webhook signature verification failed")
 
-def _base_metadata(event_type: GitHubWebhookEventType, delivery_id: str, action: str) -> GitHubWebhookEventMetadata:
-    return GitHubWebhookEventMetadata(
-        event_type=event_type,
-        delivery_id=delivery_id,
-        action=action
-    )
+
+def _base_metadata(
+    event_type: GitHubWebhookEventType, delivery_id: str, action: str
+) -> GitHubWebhookEventMetadata:
+    return GitHubWebhookEventMetadata(event_type=event_type, delivery_id=delivery_id, action=action)
+
 
 def _build_issue_to_pr_job(
     *,
@@ -96,6 +113,7 @@ def _build_issue_to_pr_job(
         execute_remote_actions=_env_flag("AUTOPR_EXECUTE_REMOTE_ACTIONS", False),
     )
 
+
 def _build_pr_to_merge_job(
     *,
     repository: GitHubRepo,
@@ -129,6 +147,7 @@ def _build_pr_to_merge_job(
         review_approved=review_approved,
         execute_remote_actions=_env_flag("AUTOPR_EXECUTE_REMOTE_ACTIONS", False),
     )
+
 
 def _jobs_for_issues_event(
     event_type: GitHubWebhookEventType,
@@ -169,6 +188,7 @@ def _jobs_for_issues_event(
             base_branch=repo.default_branch,
         )
     ]
+
 
 def _jobs_for_pr_review_event(
     event_type: GitHubWebhookEventType,
@@ -217,7 +237,10 @@ def _jobs_for_pr_review_event(
         )
     ]
 
-def _build_jobs(event_type: str, delivery_id: str, payload: dict[str, Any]) -> Union[list[IssueToPRContext], list[PRToMergeContext]]:
+
+def _build_jobs(
+    event_type: str, delivery_id: str, payload: dict[str, Any]
+) -> Union[list[IssueToPRContext], list[PRToMergeContext]]:
     """
     Route a GitHub webhook payload to the pipeline jobs it should create.
 
@@ -232,12 +255,17 @@ def _build_jobs(event_type: str, delivery_id: str, payload: dict[str, Any]) -> U
 
     # Map webhook event type to pipeline job(s); unsupported events are ignored.
     if event_type == GitHubWebhookEventType.ISSUES.value:
-        return _jobs_for_issues_event(GitHubWebhookEventType.ISSUES, delivery_id, IssuePayload(**payload))
+        return _jobs_for_issues_event(
+            GitHubWebhookEventType.ISSUES, delivery_id, IssuePayload(**payload)
+        )
 
     if event_type == GitHubWebhookEventType.PULL_REQUEST_REVIEW.value:
-        return _jobs_for_pr_review_event(GitHubWebhookEventType.PULL_REQUEST_REVIEW, delivery_id, PRReviewPayload(**payload))
+        return _jobs_for_pr_review_event(
+            GitHubWebhookEventType.PULL_REQUEST_REVIEW, delivery_id, PRReviewPayload(**payload)
+        )
 
     return []
+
 
 def handle_github_webhook(
     *,
@@ -278,6 +306,7 @@ def handle_github_webhook(
         ignored_reason=ignored_reason,
         jobs=jobs,
     )
+
 
 def dispatch_webhook_job(job: Union[IssueToPRContext, PRToMergeContext]) -> WebhookDispatchResult:
     """
@@ -357,6 +386,7 @@ def dispatch_webhook_job(job: Union[IssueToPRContext, PRToMergeContext]) -> Webh
         run_type=job.run_type.value,
     )
 
+
 def dispatch_resume_job(resume_payload: dict[str, Any]) -> WebhookDispatchResult:
     """
     Execute a queued review-resume message after a human approval.
@@ -402,6 +432,7 @@ def dispatch_resume_job(resume_payload: dict[str, Any]) -> WebhookDispatchResult
         state=final_run.state,
         run_type=final_run.run_type.value,
     )
+
 
 if __name__ == "__main__":
     with open("payload.json", "r", encoding="utf-8") as f:

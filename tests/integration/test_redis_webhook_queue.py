@@ -11,6 +11,7 @@ from infra.github.models import PRToMergeContext
 from infra.redis.webhook_queue import RedisWebhookQueue
 from infra.redis.webhook_queue import WebhookQueueMessage
 
+
 def _repo() -> GitHubRepo:
     return GitHubRepo(
         full_name="acme/repo",
@@ -18,12 +19,14 @@ def _repo() -> GitHubRepo:
         default_branch="main",
     )
 
+
 def _meta(event_type: str, action: str) -> GitHubWebhookEventMetadata:
     return GitHubWebhookEventMetadata(
         event_type=event_type,
         delivery_id="d-redis",
         action=action,
     )
+
 
 def _issue_job() -> IssueToPRContext:
     return IssueToPRContext(
@@ -37,6 +40,7 @@ def _issue_job() -> IssueToPRContext:
         execute_remote_actions=False,
     )
 
+
 def _pr_job() -> PRToMergeContext:
     return PRToMergeContext(
         run_id=uuid.uuid4(),
@@ -47,6 +51,7 @@ def _pr_job() -> PRToMergeContext:
         review_approved=True,
         execute_remote_actions=False,
     )
+
 
 class _FakePipe:
     def __init__(self) -> None:
@@ -63,6 +68,7 @@ class _FakePipe:
     async def execute(self):
         self.ops.append(("execute",))
         return True
+
 
 class _FakeRedis:
     def __init__(self) -> None:
@@ -91,6 +97,7 @@ class _FakeRedis:
     async def aclose(self):
         self.closed = True
 
+
 def test_webhook_queue_message_roundtrip_issue_and_pr() -> None:
     issue_message = WebhookQueueMessage.from_job(_issue_job())
     assert issue_message.run_type == RunType.ISSUE_TO_PR
@@ -112,6 +119,7 @@ def test_webhook_queue_message_roundtrip_issue_and_pr() -> None:
     )
     with pytest.raises(ValueError, match="Unsupported run_type"):
         bad.to_job()
+
 
 def test_redis_webhook_queue_enqueue_reserve_ack_fail_close() -> None:
     async def run_test() -> None:
@@ -135,13 +143,18 @@ def test_redis_webhook_queue_enqueue_reserve_ack_fail_close() -> None:
         await queue.ack(raw_message)
         assert fake.lrem_calls == [("processing", 1, raw_message)]
         await queue.fail(message, raw_message, "first failure")
-        assert ("lpush", "queue",) == fake.pipe.ops[1][:2]
+        assert (
+            "lpush",
+            "queue",
+        ) == fake.pipe.ops[1][:2]
         second = message.model_copy(update={"attempts": 1})
         await queue.fail(second, raw_message, "second failure")
         assert fake.pipe.ops[-2][1] == "dlq"
         await queue.close()
         assert fake.closed is True
+
     asyncio.run(run_test())
+
 
 def test_redis_webhook_queue_from_env(monkeypatch: pytest.MonkeyPatch) -> None:
     fake_client = object()
@@ -173,6 +186,7 @@ def test_redis_webhook_queue_from_env(monkeypatch: pytest.MonkeyPatch) -> None:
     assert queue._dlq_key == "d"
     assert queue._max_attempts == 7
 
+
 def test_redis_webhook_queue_reserve_none_with_timeout_zero() -> None:
     async def run_test() -> None:
         fake = _FakeRedis()
@@ -192,6 +206,7 @@ def test_redis_webhook_queue_reserve_none_with_timeout_zero() -> None:
         assert fake.blmove_calls[0][1]["dest"] == "LEFT"
 
     asyncio.run(run_test())
+
 
 def test_redis_webhook_queue_fail_truncates_error_before_requeue() -> None:
     async def run_test() -> None:
@@ -217,6 +232,7 @@ def test_redis_webhook_queue_fail_truncates_error_before_requeue() -> None:
 
     asyncio.run(run_test())
 
+
 def test_webhook_queue_message_resume_round_trip() -> None:
     message = WebhookQueueMessage.from_resume(
         run_type=RunType.ISSUE_TO_PR,
@@ -235,6 +251,7 @@ def test_webhook_queue_message_resume_round_trip() -> None:
         "context": {"repository": "acme/repo", "issue_number": 9},
     }
 
+
 def test_webhook_queue_message_defaults_to_webhook_kind() -> None:
     # Messages enqueued before the kind/resume fields existed must still parse.
     legacy = (
@@ -244,6 +261,7 @@ def test_webhook_queue_message_defaults_to_webhook_kind() -> None:
     message = WebhookQueueMessage.model_validate_json(legacy)
     assert message.kind == "webhook"
     assert message.resume_payload == {}
+
 
 def test_redis_webhook_queue_enqueue_resume_pushes_resume_message() -> None:
     async def run_test() -> None:

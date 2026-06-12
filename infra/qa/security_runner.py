@@ -3,6 +3,7 @@ import json
 from infra.qa.models import SecurityIssue, SecurityResult
 from infra.qa.sandbox import Sandbox
 
+
 class SecurityRunner:
     def __init__(self, sandbox: Sandbox):
         self.sandbox = sandbox
@@ -18,8 +19,10 @@ class SecurityRunner:
             data = json.loads(result.stdout)
         except Exception:
             # Bandit sometimes emits non-JSON output on runtime/tooling failures.
-            return SecurityResult(success=False, issues=[], raw_output=result.stdout or result.stderr)
-        
+            return SecurityResult(
+                success=False, issues=[], raw_output=result.stdout or result.stderr
+            )
+
         issues: list[SecurityIssue] = []
         for item in data.get("results", []):
             issues.append(
@@ -30,7 +33,7 @@ class SecurityRunner:
                     issue=item["issue_text"],
                 )
             )
-            
+
         return SecurityResult(
             success=result.success and len(issues) == 0,
             issues=issues,

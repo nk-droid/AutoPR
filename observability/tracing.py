@@ -18,6 +18,8 @@ SpanAttributes = Mapping[str, AttributeValue]
 AttributeFactory = Callable[..., SpanAttributes | None]
 
 _configured = False
+
+
 def configure_tracing(service_name: str | None = None) -> None:
     """
     Configure OpenTelemetry tracing once for the current process.
@@ -57,6 +59,7 @@ def configure_tracing(service_name: str | None = None) -> None:
     trace.set_tracer_provider(provider)
     _configured = True
 
+
 def get_tracer():
     """
     Return the AutoPR tracer after ensuring tracing is configured.
@@ -67,6 +70,7 @@ def get_tracer():
 
     configure_tracing()
     return trace.get_tracer("autopr")
+
 
 def inject_trace_context() -> dict[str, str]:
     """
@@ -79,6 +83,7 @@ def inject_trace_context() -> dict[str, str]:
     carrier: dict[str, str] = {}
     propagate.inject(carrier)
     return carrier
+
 
 def attach_trace_context(carrier: dict[str, str] | None):
     """
@@ -96,6 +101,7 @@ def attach_trace_context(carrier: dict[str, str] | None):
     ctx = propagate.extract(carrier)
     return context.attach(ctx)
 
+
 def detach_trace_context(token) -> None:
     """
     Detach a previously attached trace context token.
@@ -106,6 +112,7 @@ def detach_trace_context(token) -> None:
 
     if token is not None:
         context.detach(token)
+
 
 def _resolve_attributes(
     fn: Callable[..., Any],
@@ -123,6 +130,7 @@ def _resolve_attributes(
     bound = signature.bind_partial(*args, **kwargs)
     bound.apply_defaults()
     return attributes(**bound.arguments) or {}
+
 
 def traced(name: str, attributes: SpanAttributes | AttributeFactory | None = None):
     """
@@ -163,6 +171,7 @@ def traced(name: str, attributes: SpanAttributes | AttributeFactory | None = Non
 
     return decorator
 
+
 def _get_bound_arg(
     fn: Callable[..., Any],
     args: tuple[Any, ...],
@@ -172,6 +181,7 @@ def _get_bound_arg(
     signature = inspect.signature(fn)
     bound = signature.bind_partial(*args, **kwargs)
     return bound.arguments.get(name)
+
 
 def traced_remote(
     name: str,
@@ -218,6 +228,7 @@ def traced_remote(
 
     return decorator
 
+
 def ray_worker_attrs(
     self,
     payload: Any = None,
@@ -240,8 +251,10 @@ def ray_worker_attrs(
         "autopr.payload.type": payload.__class__.__name__ if payload is not None else "",
     }
 
+
 def _value(value: Any) -> str:
     return value.value if hasattr(value, "value") else str(value)
+
 
 def pipeline_step_attrs(self, context: dict[str, Any], run, runtime) -> dict[str, AttributeValue]:
     """
@@ -265,6 +278,7 @@ def pipeline_step_attrs(self, context: dict[str, Any], run, runtime) -> dict[str
         "autopr.repository": str(run.repository or context.get("repository") or ""),
     }
 
+
 def langgraph_node_attrs(agent: str, node: str):
     """
     Create an attribute factory for LangGraph agent node spans.
@@ -287,6 +301,7 @@ def langgraph_node_attrs(agent: str, node: str):
         }
 
     return factory
+
 
 def llm_chain_attrs(**kwargs) -> dict[str, AttributeValue]:
     """

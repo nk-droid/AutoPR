@@ -10,6 +10,7 @@ from infra.storage.review_requests import mark_review_request_applied
 # review (the publish step). This runs in the worker, which owns Ray and git, so
 # the heavy publish/PR work happens in the properly provisioned environment.
 
+
 def _build_issue_to_pr_context(run: RunModel, base: dict[str, Any]) -> IssueToPRContext:
     """
     Reconstruct issue workflow context for an approved review resume.
@@ -32,8 +33,11 @@ def _build_issue_to_pr_context(run: RunModel, base: dict[str, Any]) -> IssueToPR
     ctx["base_branch"] = ctx.get("base_branch") or "main"
     ctx["review_approved"] = True
     ctx["execute_remote_actions"] = True
-    ctx["metadata"] = ctx.get("metadata") if isinstance(ctx.get("metadata"), dict) else dict(run.metadata)
+    ctx["metadata"] = (
+        ctx.get("metadata") if isinstance(ctx.get("metadata"), dict) else dict(run.metadata)
+    )
     return IssueToPRContext.model_validate(ctx)
+
 
 def _build_pr_to_merge_context(run: RunModel, base: dict[str, Any]) -> PRToMergeContext:
     """
@@ -55,8 +59,11 @@ def _build_pr_to_merge_context(run: RunModel, base: dict[str, Any]) -> PRToMerge
     ctx["pull_request_number"] = pr_number
     ctx["review_approved"] = True
     ctx["execute_remote_actions"] = True
-    ctx["metadata"] = ctx.get("metadata") if isinstance(ctx.get("metadata"), dict) else dict(run.metadata)
+    ctx["metadata"] = (
+        ctx.get("metadata") if isinstance(ctx.get("metadata"), dict) else dict(run.metadata)
+    )
     return PRToMergeContext.model_validate(ctx)
+
 
 def resume_after_approval(
     *,
@@ -89,14 +96,20 @@ def resume_after_approval(
     run_model = RunModel.model_validate(stored.payload)
     resume_context = dict(context)
     resume_context["_resume_stage_index"] = int(stage_index)
-    if resume_context.get("review_request_kind") == "llm_soft_gate" or isinstance(resume_context.get("llm_review"), dict):
+    if resume_context.get("review_request_kind") == "llm_soft_gate" or isinstance(
+        resume_context.get("llm_review"), dict
+    ):
         resume_context["llm_soft_gate_approved"] = True
 
     coordinator = Coordinator(run_model)
     if run_model.run_type == RunType.ISSUE_TO_PR:
-        final_run = coordinator.run_issue_to_pr(_build_issue_to_pr_context(run_model, resume_context))
+        final_run = coordinator.run_issue_to_pr(
+            _build_issue_to_pr_context(run_model, resume_context)
+        )
     else:
-        final_run = coordinator.run_pr_to_merge(_build_pr_to_merge_context(run_model, resume_context))
+        final_run = coordinator.run_pr_to_merge(
+            _build_pr_to_merge_context(run_model, resume_context)
+        )
 
     mark_review_request_applied(
         request_id=request_id,

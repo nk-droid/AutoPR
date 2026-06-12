@@ -2,10 +2,12 @@ from pydantic import BaseModel, Field
 from core.contracts.enums import CheckStatus
 from core.orchestrator.models import StageStatus
 
+
 class QACheck(BaseModel):
     name: str = Field(..., description="Name of the QA check.")
     status: CheckStatus = Field(..., description="Result of the QA check.")
     details: dict = Field(default={}, description="Additional details for this check.")
+
 
 class QAOutput(BaseModel):
     status: StageStatus = Field(default=StageStatus.BLOCKED)

@@ -22,6 +22,7 @@ _IGNORE_DIRS = {
     ".vscode",
 }
 
+
 def get_repos_base() -> Path:
     """Persistent base directory under which each repo is cloned to repos/<name>."""
     base = Path(os.environ.get("AUTOPR_REPOS_DIR", "repos")).expanduser()
@@ -29,23 +30,34 @@ def get_repos_base() -> Path:
     base.mkdir(parents=True, exist_ok=True)
     return base
 
+
 def get_work_base() -> Path:
     """Scratch area for QA tool sandboxes, kept off /tmp and beside the clones."""
     work = get_repos_base() / ".work"
     work.mkdir(parents=True, exist_ok=True)
     return work
 
+
 def keep_qa_workspace() -> bool:
     """When set, QA tool workspaces are retained under repos/.work for inspection."""
-    return str(os.environ.get("AUTOPR_KEEP_QA_WORKSPACE", "")).strip().lower() in {"1", "true", "yes", "y", "on"}
+    return str(os.environ.get("AUTOPR_KEEP_QA_WORKSPACE", "")).strip().lower() in {
+        "1",
+        "true",
+        "yes",
+        "y",
+        "on",
+    }
+
 
 def repo_dir_name(repository: str) -> str:
     """Map an "owner/name" slug to a single safe directory name."""
     name = repository.strip().strip("/").split("/")[-1] or "repo"
     return re.sub(r"[^A-Za-z0-9._-]", "-", name)
 
+
 def repo_workspace_path(repository: str) -> Path:
     return get_repos_base() / repo_dir_name(repository)
+
 
 def _tokenized_https_url(clone_url: str, token: str) -> str:
     if not token:
@@ -57,7 +69,10 @@ def _tokenized_https_url(clone_url: str, token: str) -> str:
     netloc = f"x-access-token:{safe_token}@{parsed.netloc}"
     return urlunsplit((parsed.scheme, netloc, parsed.path, parsed.query, parsed.fragment))
 
-def _fresh_clone(repository: str, destination: Path, base_branch: str, token: str, clone_url: str | None) -> Path:
+
+def _fresh_clone(
+    repository: str, destination: Path, base_branch: str, token: str, clone_url: str | None
+) -> Path:
     if destination.exists():
         shutil.rmtree(destination, ignore_errors=True)
     destination.parent.mkdir(parents=True, exist_ok=True)
@@ -79,6 +94,7 @@ def _fresh_clone(repository: str, destination: Path, base_branch: str, token: st
             last_error = exc
 
     raise RuntimeError(f"Failed to clone {repository}: {last_error}")
+
 
 def clone_repo(
     repository: str,
@@ -110,6 +126,7 @@ def clone_repo(
 
     return _fresh_clone(repository, destination, base_branch, resolved_token, clone_url)
 
+
 def build_repo_map(repo_path: str | Path, *, max_files: int = 400) -> str:
     """Return a newline-separated, sorted listing of repo-relative file paths."""
     root = Path(repo_path)
@@ -123,6 +140,7 @@ def build_repo_map(repo_path: str | Path, *, max_files: int = 400) -> str:
 
     relative_paths.sort()
     return "\n".join(relative_paths[:max_files])
+
 
 def read_target_files(
     repo_path: str | Path,

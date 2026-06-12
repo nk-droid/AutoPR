@@ -9,6 +9,7 @@ from core.orchestrator.models import StageStatus
 
 logger = logging.getLogger(__name__)
 
+
 class ReviewAgent:
     def __init__(self):
         self.graph = build_review_graph(nodes)
@@ -31,6 +32,6 @@ class ReviewAgent:
             result = self.graph.invoke(self._initial_state(context, allow_unknown=False))
         except MergeabilityUnknownError:
             result = self.graph.invoke(self._initial_state(context, allow_unknown=True))
-        
+
         log_agent_decision(logger, "review", result["status"])
         return result["status"], result["final_output"]

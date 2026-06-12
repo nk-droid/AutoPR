@@ -5,10 +5,12 @@ from core.orchestrator.transitions import can_transition
 
 logger = logging.getLogger(__name__)
 
+
 class InvalidStateTransitionError(ValueError):
     """Raised when a run tries to move outside its workflow graph."""
 
     pass
+
 
 class StateMachine:
     """Tracks run state and records validated transition history."""

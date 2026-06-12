@@ -7,6 +7,7 @@ from core.contracts.review import LLMMergeRiskReview
 from core.contracts.run_context import PRToMergeContext
 from core.orchestrator.models import StageStatus
 
+
 class ReviewState(TypedDict):
     context: PRToMergeContext
     status: StageStatus
@@ -18,8 +19,10 @@ class ReviewState(TypedDict):
     final_output: dict[str, Any]
     allow_unknown: bool
 
+
 def is_mergeable_status_unknown(exc: Exception) -> bool:
     return isinstance(exc, MergeabilityUnknownError)
+
 
 # Evaluate review -> LLM merge-risk review -> Finalize
 def build_review_graph(nodes) -> StateGraph[ReviewState]:

@@ -1,6 +1,7 @@
 from infra.qa.models import CommandResult
 from infra.qa import test_runner as qa_test_runner
 
+
 class FakeSandbox:
     def __init__(self, result: CommandResult) -> None:
         self.python = "python3"
@@ -10,6 +11,7 @@ class FakeSandbox:
     def run(self, command: list[str], timeout: int = 300) -> CommandResult:
         self.calls.append((command, timeout))
         return self.result
+
 
 def test_test_runner_parses_passed_and_failed_counts() -> None:
     sandbox = FakeSandbox(
@@ -30,6 +32,7 @@ def test_test_runner_parses_passed_and_failed_counts() -> None:
     assert result.errors == ["error details"]
     assert sandbox.calls[0][0] == ["python3", "-m", "pytest", "-v", "tests/unit"]
     assert sandbox.calls[0][1] == 12
+
 
 def test_test_runner_handles_success_with_no_summary_matches() -> None:
     sandbox = FakeSandbox(

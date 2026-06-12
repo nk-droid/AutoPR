@@ -3,6 +3,7 @@ from pathlib import Path
 from subprocess import CompletedProcess, run
 from typing import Sequence
 
+
 class GitOperationError(RuntimeError):
     def __init__(self, command: Sequence[str], returncode: int, stderr: str) -> None:
         command_text = " ".join(command)
@@ -13,6 +14,7 @@ class GitOperationError(RuntimeError):
         self.command = list(command)
         self.returncode = returncode
         self.stderr = stderr
+
 
 @dataclass
 class GitService:
@@ -97,7 +99,9 @@ class GitService:
                     pass
                 return self.checkout_branch(branch, create=True)
 
-    def pull(self, *, remote: str = "origin", branch: str | None = None, rebase: bool = False) -> str:
+    def pull(
+        self, *, remote: str = "origin", branch: str | None = None, rebase: bool = False
+    ) -> str:
         args = ["pull"]
         if rebase:
             args.append("--rebase")
@@ -154,6 +158,7 @@ class GitService:
                 raise ValueError("remote is required when delete_remote=True")
             output_parts.append(self._run(["push", remote, "--delete", branch]))
         return "\n".join([part for part in output_parts if part])
+
 
 def checkout_branch(branch: str) -> str:
     return GitService(Path.cwd()).checkout_branch(branch)

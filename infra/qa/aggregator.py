@@ -1,5 +1,6 @@
 from infra.qa.models import CoverageResult, LintResult, QAResult, SecurityResult, TestResult
 
+
 class QAResultAggregator:
     def aggregate(
         self,
@@ -8,12 +9,12 @@ class QAResultAggregator:
         lint_result: LintResult,
         security_result: SecurityResult,
     ) -> QAResult:
-        
+
         tests_passed = test_result.success
         coverage_passed = coverage_result.success and coverage_result.threshold_passed
         lint_passed = lint_result.success
         security_passed = security_result.success
-        
+
         overall = all([tests_passed, coverage_passed, lint_passed, security_passed])
 
         return QAResult(

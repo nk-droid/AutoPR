@@ -17,8 +17,10 @@ _POLL_SEC = float(os.getenv("AUTOPR_LLM_RATE_POLL_SEC", "0.05"))
 _LEASE_SEC = float(os.getenv("AUTOPR_LLM_RATE_LEASE_SEC", "900"))
 _WINDOW_SEC = 60.0
 
+
 class RateLimitTimeout(RuntimeError):
     """Raised when a slot could not be acquired within the wait timeout."""
+
 
 def _wait_for(predicate, *, timeout: float, what: str) -> None:
     deadline = time.monotonic() + timeout
@@ -28,6 +30,7 @@ def _wait_for(predicate, *, timeout: float, what: str) -> None:
         if time.monotonic() >= deadline:
             raise RateLimitTimeout(f"timed out waiting for {what}")
         time.sleep(_POLL_SEC * (1.0 + random.random()))
+
 
 class _SlidingWindow:
     def __init__(self, limit: int, window_sec: float = _WINDOW_SEC) -> None:
@@ -45,6 +48,7 @@ class _SlidingWindow:
                 return False
             self.calls.append(now)
             return True
+
 
 class LocalLimiter:
     def __init__(self, *, rpm: int, max_concurrent: int) -> None:
@@ -64,6 +68,7 @@ class LocalLimiter:
     def release(self, token: str | None) -> None:
         if token:
             self._sem.release()
+
 
 # Atomic "admit if window has room". Uses Redis server time to avoid clock skew.
 _RPM_LUA = """
@@ -90,6 +95,7 @@ redis.call('ZADD', KEYS[1], now, ARGV[3])
 redis.call('PEXPIRE', KEYS[1], lease)
 return 1
 """
+
 
 class RedisLimiter:
     def __init__(self, client, *, key_prefix: str, rpm: int, max_concurrent: int) -> None:
@@ -120,8 +126,11 @@ class RedisLimiter:
         # 1) concurrency permit (leased, released explicitly)
         while True:
             admitted = self._run(
-                self._acquire_script, self._conc_key,
-                int(_LEASE_SEC * 1000), self._max_concurrent, token,
+                self._acquire_script,
+                self._conc_key,
+                int(_LEASE_SEC * 1000),
+                self._max_concurrent,
+                token,
             )
             if admitted is None:
                 return None  # Redis down -> fail open, nothing to release
@@ -134,8 +143,11 @@ class RedisLimiter:
         # 2) RPM window (rate, no release)
         while True:
             admitted = self._run(
-                self._rpm_script, self._rpm_key,
-                int(_WINDOW_SEC * 1000), self._rpm, str(uuid.uuid4()),
+                self._rpm_script,
+                self._rpm_key,
+                int(_WINDOW_SEC * 1000),
+                self._rpm,
+                str(uuid.uuid4()),
             )
             if admitted is None:
                 self.release(token)  # Redis blip mid-acquire -> free the slot, fail open
@@ -159,8 +171,10 @@ class RedisLimiter:
                 exc_info=True,
             )
 
+
 _redis_client = None
 _redis_lock = threading.Lock()
+
 
 def _get_redis_client():
     global _redis_client
@@ -173,6 +187,7 @@ def _get_redis_client():
         if _redis_client is None:
             try:
                 import redis as redis_sync
+
                 _redis_client = redis_sync.from_url(url, decode_responses=True)
             except Exception:
                 logger.warning(
@@ -182,6 +197,7 @@ def _get_redis_client():
                 )
                 _redis_client = None
     return _redis_client
+
 
 def build_limiter(*, key_prefix: str, rpm: int, max_concurrent: int):
     """Global (Redis) limiter when AUTOPR_REDIS_URL is set, else per-worker."""

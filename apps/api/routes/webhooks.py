@@ -17,6 +17,7 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/webhooks", tags=["webhooks"])
 
+
 @lru_cache
 def get_webhook_queue() -> RedisWebhookQueue:
     """
@@ -27,6 +28,7 @@ def get_webhook_queue() -> RedisWebhookQueue:
     """
 
     return RedisWebhookQueue.from_env()
+
 
 def _github_webhook_attributes(
     request: Request,
@@ -54,6 +56,7 @@ def _github_webhook_attributes(
         "github.webhook.delivery_id": x_github_delivery,
         "github.webhook.signature_present": x_hub_signature_256 is not None,
     }
+
 
 @router.post("/github", response_model=GitHubWebhookResponse, status_code=202)
 @traced("api.webhooks.github", attributes=_github_webhook_attributes)

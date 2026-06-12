@@ -13,6 +13,7 @@ from infra.redis.webhook_queue import RedisWebhookQueue
 
 pytestmark = pytest.mark.e2e
 
+
 def _load_webhook_handler_module():
     fake_coordinator_module = types.ModuleType("core.orchestrator.coordinator")
     fake_resume_module = types.ModuleType("core.orchestrator.resume")
@@ -36,11 +37,13 @@ def _load_webhook_handler_module():
     sys.modules.pop("infra.github.webhook_handler", None)
     return importlib.import_module("infra.github.webhook_handler")
 
+
 class _CommentClient:
     def list_issue_comments(self, repo: str, issue_number: int):
         del repo
         del issue_number
         return []
+
 
 class _FlowCoordinator:
     def __init__(self, run):
@@ -57,6 +60,7 @@ class _FlowCoordinator:
         self.run.repository = context.repository
         self.run.pull_request_number = context.pull_request_number
         return self.run
+
 
 class _InMemoryRedis:
     def __init__(self) -> None:
@@ -107,6 +111,7 @@ class _InMemoryRedis:
     async def aclose(self):
         self.closed = True
 
+
 def _issue_payload(action: str = "opened") -> dict:
     now = datetime.now(timezone.utc).isoformat()
     return {
@@ -125,6 +130,7 @@ def _issue_payload(action: str = "opened") -> dict:
             "default_branch": "main",
         },
     }
+
 
 def _review_payload() -> dict:
     now = datetime.now(timezone.utc).isoformat()
@@ -148,6 +154,7 @@ def _review_payload() -> dict:
             "default_branch": "main",
         },
     }
+
 
 def test_e2e_issue_webhook_to_queue_to_dispatch(monkeypatch: pytest.MonkeyPatch) -> None:
     webhook_handler = _load_webhook_handler_module()
@@ -193,6 +200,7 @@ def test_e2e_issue_webhook_to_queue_to_dispatch(monkeypatch: pytest.MonkeyPatch)
         assert redis_client.closed is True
 
     asyncio.run(run_flow())
+
 
 def test_e2e_pr_review_webhook_to_queue_to_dispatch(monkeypatch: pytest.MonkeyPatch) -> None:
     webhook_handler = _load_webhook_handler_module()

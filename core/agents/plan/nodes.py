@@ -20,6 +20,7 @@ PLAN_DRAFT_PROMPT = require_prompt(_PROMPTS, "plan_draft", source=_PROMPTS_PATH)
 DEPENDENCY_MAPPING_PROMPT = require_prompt(_PROMPTS, "dependency_mapping", source=_PROMPTS_PATH)
 PLAN_AMBIGUITY_PROMPT = require_prompt(_PROMPTS, "plan_ambiguity", source=_PROMPTS_PATH)
 
+
 class DraftPlanStepModel(BaseModel):
     title: str
     objective: str
@@ -29,6 +30,7 @@ class DraftPlanStepModel(BaseModel):
     acceptance_criteria: list[str] = Field(default_factory=list)
     risk_level: RiskLevel = RiskLevel.LOW
 
+
 class DraftPlanModel(BaseModel):
     status: StageStatus = StageStatus.OK
     strategy: str
@@ -36,26 +38,34 @@ class DraftPlanModel(BaseModel):
     open_questions: list[str] = Field(default_factory=list)
     steps: list[DraftPlanStepModel] = Field(default_factory=list)
 
+
 class DependencyItem(BaseModel):
     title: str
     depends_on_titles: list[str] = Field(default_factory=list)
 
+
 class DependencyMapModel(BaseModel):
     steps: list[DependencyItem] = Field(default_factory=list)
+
 
 class PlanAmbiguityModel(BaseModel):
     status: StageStatus = StageStatus.OK
     open_questions: list[str] = Field(default_factory=list)
+
 
 def _as_triage_result(value: Any) -> TriageResult:
     if isinstance(value, TriageResult):
         return value
     return TriageResult.model_validate(value)
 
+
 def _as_plan_steps(values: Any) -> list[PlanStep]:
     if not isinstance(values, list):
         return []
-    return [item if isinstance(item, PlanStep) else PlanStep.model_validate(item) for item in values]
+    return [
+        item if isinstance(item, PlanStep) else PlanStep.model_validate(item) for item in values
+    ]
+
 
 @traced(
     "plan_step.draft_plan",
@@ -92,9 +102,7 @@ def draft_plan(state: dict[str, Any]) -> dict[str, Any]:
         output_model=DraftPlanModel,
         variables={
             "triage_result": triage_result.model_dump(mode="json"),
-            "repo_map": (
-                repo_map[:12000] if repo_map else "No repository files provided."
-            ),
+            "repo_map": (repo_map[:12000] if repo_map else "No repository files provided."),
         },
         agent="plan_agent",
         node="draft_plan",
@@ -122,6 +130,7 @@ def draft_plan(state: dict[str, Any]) -> dict[str, Any]:
 
     return state
 
+
 @traced(
     "plan_step.map_dependencies",
     attributes=langgraph_node_attrs("plan", "map_dependencies"),
@@ -145,7 +154,7 @@ def map_dependencies(state: dict[str, Any]) -> dict[str, Any]:
 
     # Extract plan steps from state
     plan_steps = _as_plan_steps(state.get("steps"))
-    
+
     response = invoke_chain(
         template=DEPENDENCY_MAPPING_PROMPT.template,
         input_vars=DEPENDENCY_MAPPING_PROMPT.input_vars,
@@ -159,8 +168,7 @@ def map_dependencies(state: dict[str, Any]) -> dict[str, Any]:
 
     # Update the state with dependencies between steps
     dependency_titles_by_step_title = {
-        item.title: item.depends_on_titles
-        for item in response.steps
+        item.title: item.depends_on_titles for item in response.steps
     }
     step_id_by_title = {step.title: step.id for step in plan_steps}
     state["steps"] = [
@@ -177,6 +185,7 @@ def map_dependencies(state: dict[str, Any]) -> dict[str, Any]:
     ]
 
     return state
+
 
 @traced(
     "plan_step.detect_ambiguity",
@@ -241,6 +250,7 @@ def detect_ambiguity(state: dict[str, Any]) -> dict[str, Any]:
 
     return state
 
+
 @traced(
     "plan_step.finalize",
     attributes=langgraph_node_attrs("plan", "finalize"),
@@ -265,7 +275,7 @@ def finalize(state: dict[str, Any]) -> dict[str, Any]:
     Returns:
         An updated state dictionary with the final plan output added.
     """
-    
+
     plan_steps = _as_plan_steps(state.get("steps"))
     assumptions = state.get("assumptions", [])
     open_questions = state.get("open_questions", [])
@@ -276,6 +286,6 @@ def finalize(state: dict[str, Any]) -> dict[str, Any]:
         assumptions=assumptions if isinstance(assumptions, list) else [],
         open_questions=open_questions if isinstance(open_questions, list) else [],
     )
-    
+
     state["final_output"] = result.model_dump(mode="json")
     return state

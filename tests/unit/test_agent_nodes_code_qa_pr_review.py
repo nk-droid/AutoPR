@@ -11,13 +11,16 @@ import core.agents.pr.nodes as pr_nodes
 import core.agents.qa.nodes as qa_nodes
 import core.agents.review.nodes as review_nodes
 
+
 def test_code_nodes_generate_validate_finalize_success(monkeypatch) -> None:
     def fake_invoke_chain(*, output_model, **kwargs):
         del kwargs
         return code_nodes.GeneratedFilesPayload(
             files=[
                 code_nodes.GeneratedFile(path="app/main.py", content="print('ok')"),
-                code_nodes.GeneratedFile(path="tests/test_main.py", content="def test_ok():\n    assert True"),
+                code_nodes.GeneratedFile(
+                    path="tests/test_main.py", content="def test_ok():\n    assert True"
+                ),
                 code_nodes.GeneratedFile(path="ignored.py", content="x"),
             ],
             summary="done",
@@ -50,6 +53,7 @@ def test_code_nodes_generate_validate_finalize_success(monkeypatch) -> None:
     assert state["final_output"]["files_map"]["app/main.py"] == "print('ok')"
     assert "tests/test_main.py" in state["final_output"]["tests_map"]
 
+
 def test_code_nodes_block_when_no_target_files() -> None:
     state = {
         "step": PlanStep(title="x", objective="y", files=[], tests=[]),
@@ -61,11 +65,13 @@ def test_code_nodes_block_when_no_target_files() -> None:
     assert updated["status"] == StageStatus.BLOCKED
     assert updated["notes"]["blocking_reason"] == "no_target_files"
 
+
 def test_qa_nodes_blocks_invalid_inputs() -> None:
     state = {"coding_output": {}, "coding_step": {}, "tool_results": []}
     updated = qa_nodes.evaluate_inputs(state)
     assert updated["status"] == StageStatus.BLOCKED
     assert updated["notes"]["blocking_reason"] == "invalid_coding_output"
+
 
 def test_qa_nodes_run_checks_sets_blocked_when_tools_missing() -> None:
     state = {
@@ -85,6 +91,7 @@ def test_qa_nodes_run_checks_sets_blocked_when_tools_missing() -> None:
     assert set(updated["notes"]["missing_tools"]) == {"coverage", "security"}
     finalized = qa_nodes.finalize(updated)
     assert finalized["final_output"]["status"] == StageStatus.BLOCKED.value
+
 
 def test_pr_nodes_prepare_and_skip_remote_open() -> None:
     context = IssueToPRContext(
@@ -116,6 +123,7 @@ def test_pr_nodes_prepare_and_skip_remote_open() -> None:
     assert state["notes"]["remote_creation_skipped"] is True
     state = pr_nodes.finalize(state)
     assert "request" in state["final_output"]
+
 
 def test_review_nodes_evaluate_and_finalize() -> None:
     context = PRToMergeContext(

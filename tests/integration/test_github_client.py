@@ -6,8 +6,11 @@ from infra.github.client import GitHubClient
 from infra.github.client import _extract_error_details
 from infra.github.client import _stringify_error_item
 
+
 class _FakeResponse:
-    def __init__(self, status_code: int, payload, text: str = "", headers: dict[str, str] | None = None) -> None:
+    def __init__(
+        self, status_code: int, payload, text: str = "", headers: dict[str, str] | None = None
+    ) -> None:
         self.status_code = status_code
         self._payload = payload
         self.text = text or str(payload)
@@ -24,6 +27,7 @@ class _FakeResponse:
             raise self._payload
         return self._payload
 
+
 class _FakeHttpClient:
     def __init__(self, response: _FakeResponse) -> None:
         self.response = response
@@ -36,6 +40,7 @@ class _FakeHttpClient:
 
     def close(self) -> None:
         self.closed = True
+
 
 def test_error_detail_helpers() -> None:
     item_text = _stringify_error_item(
@@ -53,6 +58,7 @@ def test_error_detail_helpers() -> None:
     assert "PullRequest/base/invalid" in detail
     assert "docs: https://docs.github.com" in detail
 
+
 def test_request_success_and_auth_headers() -> None:
     response = _FakeResponse(200, [{"id": 1}, {"id": 2}])
     fake_client = _FakeHttpClient(response)
@@ -64,6 +70,7 @@ def test_request_success_and_auth_headers() -> None:
     assert headers["Accept"] == "application/vnd.github+json"
     client.close()
     assert fake_client.closed is False
+
 
 def test_request_raises_github_api_error_with_payload() -> None:
     payload = {"message": "Validation Failed", "errors": [{"field": "head", "code": "invalid"}]}

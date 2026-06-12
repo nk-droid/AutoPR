@@ -11,6 +11,7 @@ from core.orchestrator.models import RunType
 from core.orchestrator.models import StageResult
 from core.orchestrator.models import StageStatus
 
+
 def _load_coordinator_module():
     calls: dict[str, list[dict[str, Any]]] = {
         "upsert_run": [],
@@ -27,7 +28,9 @@ def _load_coordinator_module():
         calls["upsert_run"].append(kwargs)
 
     def record_run_event(run_id: str, event_type: str, payload: dict[str, Any]):
-        calls["record_run_event"].append({"run_id": run_id, "event_type": event_type, "payload": payload})
+        calls["record_run_event"].append(
+            {"run_id": run_id, "event_type": event_type, "payload": payload}
+        )
 
     def save_artifact(run_id: str, key: str, value: dict[str, Any]):
         calls["save_artifact"].append({"run_id": run_id, "key": key, "value": value})
@@ -44,7 +47,9 @@ def _load_coordinator_module():
         return {"request_id": "rq-1"}
 
     def attach_review_request_slack_ref(request_id: str, message_ref: str):
-        calls["attach_review_request_slack_ref"].append({"request_id": request_id, "message_ref": message_ref})
+        calls["attach_review_request_slack_ref"].append(
+            {"request_id": request_id, "message_ref": message_ref}
+        )
 
     fake_review_requests.create_review_request = create_review_request
     fake_review_requests.attach_review_request_slack_ref = attach_review_request_slack_ref
@@ -70,6 +75,7 @@ def _load_coordinator_module():
     module = importlib.import_module("core.orchestrator.coordinator")
     return module, calls
 
+
 class _FakeSpan:
     def __init__(self) -> None:
         self.attributes: dict[str, Any] = {}
@@ -86,11 +92,13 @@ class _FakeSpan:
     def set_attribute(self, key: str, value: Any) -> None:
         self.attributes[key] = value
 
+
 class _FakeTracer:
     def start_as_current_span(self, name: str, attributes: dict[str, Any]):
         del name
         del attributes
         return _FakeSpan()
+
 
 class _Step:
     def __init__(
@@ -128,6 +136,7 @@ class _Step:
         del run
         return list(self._after)
 
+
 def _issue_context() -> IssueToPRContext:
     return IssueToPRContext(
         repository="acme/repo",
@@ -137,6 +146,7 @@ def _issue_context() -> IssueToPRContext:
         base_branch="main",
         metadata={"source": "test"},
     )
+
 
 def test_coordinator_run_issue_to_pr_persists_transitions_and_artifacts(monkeypatch) -> None:
     coordinator_module, calls = _load_coordinator_module()
@@ -164,6 +174,7 @@ def test_coordinator_run_issue_to_pr_persists_transitions_and_artifacts(monkeypa
     assert calls["save_artifact"][0]["key"].startswith("stage_result:0:triage")
     assert len(calls["upsert_run"]) >= 3
 
+
 def test_coordinator_qa_retry_loops_back_to_code(monkeypatch) -> None:
     coordinator_module, calls = _load_coordinator_module()
     monkeypatch.setattr(coordinator_module, "observe_stage", lambda *args, **kwargs: None)
@@ -182,8 +193,14 @@ def test_coordinator_qa_retry_loops_back_to_code(monkeypatch) -> None:
 
     def qa_result(call_count: int) -> StageResult:
         if call_count == 1:
-            return StageResult(stage=PipelineStage.QA.value, status=StageStatus.BLOCKED, notes={"reason": "failed"})
-        return StageResult(stage=PipelineStage.QA.value, status=StageStatus.OK, outputs={"qa_output": {"status": "ok"}})
+            return StageResult(
+                stage=PipelineStage.QA.value, status=StageStatus.BLOCKED, notes={"reason": "failed"}
+            )
+        return StageResult(
+            stage=PipelineStage.QA.value,
+            status=StageStatus.OK,
+            outputs={"qa_output": {"status": "ok"}},
+        )
 
     qa_step = _Step(
         stage=PipelineStage.QA,
@@ -193,7 +210,9 @@ def test_coordinator_qa_retry_loops_back_to_code(monkeypatch) -> None:
             [(RunState.PUBLISHED.value, "qa done")] if result.status == StageStatus.OK else []
         ),
     )
-    monkeypatch.setattr(coordinator_module, "steps_for_run_type", lambda _run_type: [code_step, qa_step])
+    monkeypatch.setattr(
+        coordinator_module, "steps_for_run_type", lambda _run_type: [code_step, qa_step]
+    )
     run = RunModel(state=RunState.PLANNED.value, run_type=RunType.ISSUE_TO_PR)
     coordinator = coordinator_module.Coordinator(run)
     final_run = coordinator.run_issue_to_pr(_issue_context())
@@ -201,7 +220,11 @@ def test_coordinator_qa_retry_loops_back_to_code(monkeypatch) -> None:
     assert qa_step.calls == 2
     assert final_run.state == RunState.PUBLISHED.value
     assert any(item["event_type"] == "qa_retry_scheduled" for item in calls["record_run_event"])
-    assert any(item["event_type"] == "state_transition" and item["payload"]["reason"] == "qa_retry_1" for item in calls["record_run_event"])
+    assert any(
+        item["event_type"] == "state_transition" and item["payload"]["reason"] == "qa_retry_1"
+        for item in calls["record_run_event"]
+    )
+
 
 def test_coordinator_publish_needs_review_creates_review_request(monkeypatch) -> None:
     coordinator_module, calls = _load_coordinator_module()
@@ -227,6 +250,7 @@ def test_coordinator_publish_needs_review_creates_review_request(monkeypatch) ->
     assert calls["send_needs_review_notification"][0]["request_id"] == "rq-1"
     assert any(item["event_type"] == "needs_review_raised" for item in calls["record_run_event"])
 
+
 def test_coordinator_blocks_on_max_autonomous_loops(monkeypatch) -> None:
     coordinator_module, calls = _load_coordinator_module()
     monkeypatch.setattr(coordinator_module, "observe_stage", lambda *args, **kwargs: None)
@@ -236,21 +260,27 @@ def test_coordinator_blocks_on_max_autonomous_loops(monkeypatch) -> None:
 
     triage_step = _Step(
         stage=PipelineStage.TRIAGE,
-        result_factory=lambda _count: StageResult(stage=PipelineStage.TRIAGE.value, status=StageStatus.OK),
+        result_factory=lambda _count: StageResult(
+            stage=PipelineStage.TRIAGE.value, status=StageStatus.OK
+        ),
         after=[(RunState.TRIAGED.value, "triaged")],
     )
     plan_step = _Step(
         stage=PipelineStage.PLAN,
-        result_factory=lambda _count: StageResult(stage=PipelineStage.PLAN.value, status=StageStatus.OK),
+        result_factory=lambda _count: StageResult(
+            stage=PipelineStage.PLAN.value, status=StageStatus.OK
+        ),
         after=[(RunState.PLANNED.value, "planned")],
     )
-    monkeypatch.setattr(coordinator_module, "steps_for_run_type", lambda _run_type: [triage_step, plan_step])
+    monkeypatch.setattr(
+        coordinator_module, "steps_for_run_type", lambda _run_type: [triage_step, plan_step]
+    )
 
     run = RunModel(state=RunState.RECEIVED.value, run_type=RunType.ISSUE_TO_PR)
     coordinator = coordinator_module.Coordinator(run)
     final_run = coordinator.run_issue_to_pr(_issue_context())
 
-    assert triage_step.calls == 1            # first loop runs
-    assert plan_step.calls == 0              # blocked before executing the 2nd step
+    assert triage_step.calls == 1  # first loop runs
+    assert plan_step.calls == 0  # blocked before executing the 2nd step
     assert final_run.state == RunState.BLOCKED.value
     assert any(item["event_type"] == "run_blocked" for item in calls["record_run_event"])

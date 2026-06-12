@@ -10,6 +10,7 @@ from infra.storage.models import StoredRunEvent, StoredArtifact, StoredRun
 
 logger = logging.getLogger(__name__)
 
+
 def upsert_run(
     *,
     run_id: str,
@@ -38,13 +39,13 @@ def upsert_run(
         updated_at=datetime.now(timezone.utc),
     )
     stmt = stmt.on_conflict_do_update(
-        index_elements=['run_id'],
+        index_elements=["run_id"],
         set_={
-            'state': stmt.excluded.state,
-            'run_type': stmt.excluded.run_type,
-            'payload': stmt.excluded.payload,
-            'updated_at': stmt.excluded.updated_at,
-        }
+            "state": stmt.excluded.state,
+            "run_type": stmt.excluded.run_type,
+            "payload": stmt.excluded.payload,
+            "updated_at": stmt.excluded.updated_at,
+        },
     )
     # engine.begin() automatically commits transaction upon completion
     try:
@@ -62,6 +63,7 @@ def upsert_run(
             },
         )
         raise
+
 
 def record_run_event(run_id: str, event_type: str, payload: dict[str, Any]) -> None:
     """
@@ -96,6 +98,7 @@ def record_run_event(run_id: str, event_type: str, payload: dict[str, Any]) -> N
         )
         raise
 
+
 def save_artifact(run_id: str, key: str, value: dict) -> dict:
     """
     Upsert a named artifact produced during a pipeline run.
@@ -118,11 +121,11 @@ def save_artifact(run_id: str, key: str, value: dict) -> dict:
         updated_at=datetime.now(timezone.utc),
     )
     stmt = stmt.on_conflict_do_update(
-        constraint='uq_run_artifact',
+        constraint="uq_run_artifact",
         set_={
-            'value': stmt.excluded.value,
-            'updated_at': stmt.excluded.updated_at,
-        }
+            "value": stmt.excluded.value,
+            "updated_at": stmt.excluded.updated_at,
+        },
     )
     try:
         with engine.begin() as conn:
@@ -142,6 +145,7 @@ def save_artifact(run_id: str, key: str, value: dict) -> dict:
 
     return {"run_id": run_id, "key": key, "saved": True}
 
+
 def _load_events(run_id: str) -> list[StoredRunEvent]:
     """
     Load persisted audit events for a run.
@@ -154,9 +158,7 @@ def _load_events(run_id: str) -> list[StoredRunEvent]:
     """
 
     engine = get_engine()
-    query = select(run_events).where(
-        run_events.c.run_id == run_id
-    )
+    query = select(run_events).where(run_events.c.run_id == run_id)
     with engine.connect() as conn:
         rows = conn.execute(query).fetchall()
     return [
@@ -170,6 +172,7 @@ def _load_events(run_id: str) -> list[StoredRunEvent]:
         for row in rows
     ]
 
+
 def _load_artifacts(run_id: str) -> list[StoredArtifact]:
     """
     Load persisted artifacts attached to a run.
@@ -182,9 +185,7 @@ def _load_artifacts(run_id: str) -> list[StoredArtifact]:
     """
 
     engine = get_engine()
-    query = artifacts.select().where(
-        artifacts.c.run_id == run_id
-    )
+    query = artifacts.select().where(artifacts.c.run_id == run_id)
     with engine.connect() as conn:
         rows = conn.execute(query).fetchall()
     return [
@@ -196,6 +197,7 @@ def _load_artifacts(run_id: str) -> list[StoredArtifact]:
         )
         for row in rows
     ]
+
 
 def load_run(run_id: str) -> StoredRun | None:
     """
@@ -209,9 +211,7 @@ def load_run(run_id: str) -> StoredRun | None:
     """
 
     engine = get_engine()
-    query = runs.select().where(
-        runs.c.run_id == run_id
-    )
+    query = runs.select().where(runs.c.run_id == run_id)
     with engine.connect() as conn:
         row = conn.execute(query).fetchone()
     if row is None:

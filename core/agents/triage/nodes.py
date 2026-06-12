@@ -16,6 +16,7 @@ TASK_EXTRACTION_PROMPT = require_prompt(_PROMPTS, "task_extraction", source=_PRO
 RISK_ASSESSMENT_PROMPT = require_prompt(_PROMPTS, "risk_assessment", source=_PROMPTS_PATH)
 AMBIGUITY_DETECTION_PROMPT = require_prompt(_PROMPTS, "ambiguity_detection", source=_PROMPTS_PATH)
 
+
 @traced(
     "triage_step.extract_task",
     attributes=langgraph_node_attrs("triage", "extract_task"),
@@ -42,7 +43,7 @@ def extract_task(state: dict[str, Any]) -> dict[str, Any]:
         issue = issue_value
     else:
         issue = TriageIssueInput.model_validate(issue_value)
-    
+
     response = invoke_chain(
         template=TASK_EXTRACTION_PROMPT.template,
         input_vars=TASK_EXTRACTION_PROMPT.input_vars,
@@ -56,6 +57,7 @@ def extract_task(state: dict[str, Any]) -> dict[str, Any]:
 
     state["task_spec"] = response
     return state
+
 
 @traced(
     "triage_step.assess_risk",
@@ -79,8 +81,12 @@ def assess_risk(state: dict[str, Any]) -> dict[str, Any]:
     """
 
     task_spec_value = state.get("task_spec")
-    task_spec = task_spec_value if isinstance(task_spec_value, TaskSpec) else TaskSpec.model_validate(task_spec_value)
-    
+    task_spec = (
+        task_spec_value
+        if isinstance(task_spec_value, TaskSpec)
+        else TaskSpec.model_validate(task_spec_value)
+    )
+
     response = invoke_chain(
         template=RISK_ASSESSMENT_PROMPT.template,
         input_vars=RISK_ASSESSMENT_PROMPT.input_vars,
@@ -101,6 +107,7 @@ def assess_risk(state: dict[str, Any]) -> dict[str, Any]:
 
     state["risk"] = response
     return state
+
 
 @traced(
     "triage_step.detect_ambiguity",
@@ -126,9 +133,13 @@ def detect_ambiguity(state: dict[str, Any]) -> dict[str, Any]:
 
     task_spec_value = state.get("task_spec")
     risk_value = state.get("risk")
-    task_spec = task_spec_value if isinstance(task_spec_value, TaskSpec) else TaskSpec.model_validate(task_spec_value)
+    task_spec = (
+        task_spec_value
+        if isinstance(task_spec_value, TaskSpec)
+        else TaskSpec.model_validate(task_spec_value)
+    )
     risk = risk_value if isinstance(risk_value, Risk) else Risk.model_validate(risk_value)
-    
+
     response = invoke_chain(
         template=AMBIGUITY_DETECTION_PROMPT.template,
         input_vars=AMBIGUITY_DETECTION_PROMPT.input_vars,
@@ -140,10 +151,7 @@ def detect_ambiguity(state: dict[str, Any]) -> dict[str, Any]:
                 f"Constraints: {', '.join(task_spec.constraints)}\n"
                 f"Out of Scope: {', '.join(task_spec.out_of_scope)}"
             ),
-            "risk": (
-                f"Level: {risk.level.value}\n"
-                f"Reasons: {', '.join(risk.reasons)}"
-            ),
+            "risk": (f"Level: {risk.level.value}\nReasons: {', '.join(risk.reasons)}"),
         },
         agent="triage_agent",
         node="detect_ambiguity",
@@ -154,6 +162,7 @@ def detect_ambiguity(state: dict[str, Any]) -> dict[str, Any]:
     state["ambiguity"] = response
     state["status"] = response.status
     return state
+
 
 @traced(
     "triage_step.finalize",
@@ -177,24 +186,30 @@ def finalize(state: dict[str, Any]) -> dict[str, Any]:
     Returns:
         An updated state dictionary with the final triage result added.
     """
-    
+
     task_spec_value = state.get("task_spec")
     risk_value = state.get("risk")
     ambiguity_value = state.get("ambiguity")
-    
-    task_spec = task_spec_value if isinstance(task_spec_value, TaskSpec) else TaskSpec.model_validate(task_spec_value)
+
+    task_spec = (
+        task_spec_value
+        if isinstance(task_spec_value, TaskSpec)
+        else TaskSpec.model_validate(task_spec_value)
+    )
     risk = risk_value if isinstance(risk_value, Risk) else Risk.model_validate(risk_value)
     ambiguity = (
-        ambiguity_value if isinstance(ambiguity_value, AmbiguityResult) else AmbiguityResult.model_validate(ambiguity_value)
+        ambiguity_value
+        if isinstance(ambiguity_value, AmbiguityResult)
+        else AmbiguityResult.model_validate(ambiguity_value)
     )
-    
+
     result = TriageResult(
         task_spec=task_spec,
         risk=risk,
         ambiguity=ambiguity,
         questions=list(ambiguity.questions),
     )
-    
+
     state["status"] = ambiguity.status
     state["final_output"] = result.model_dump(mode="json")
     return state

@@ -3,6 +3,7 @@ from langgraph.graph import END, StateGraph
 from core.orchestrator.models import StageStatus
 from infra.repo_worker.git_utils import GitService
 
+
 class PublishState(TypedDict):
     context: dict[str, Any]
     status: StageStatus
@@ -23,6 +24,7 @@ class PublishState(TypedDict):
     notes: dict[str, Any]
     final_output: dict[str, Any]
 
+
 # Prepare -> Resolve workspace -> Apply files -> Commit & push -> Finalize
 def build_publish_graph(nodes) -> StateGraph[PublishState]:
     graph = StateGraph(PublishState)
@@ -39,5 +41,5 @@ def build_publish_graph(nodes) -> StateGraph[PublishState]:
     graph.add_edge("apply_files", "commit_push")
     graph.add_edge("commit_push", "finalize")
     graph.add_edge("finalize", END)
-    
+
     return graph.compile()

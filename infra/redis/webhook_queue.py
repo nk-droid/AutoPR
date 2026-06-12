@@ -14,9 +14,11 @@ from infra.github.models import IssueToPRContext, PRToMergeContext
 from observability.tracing import inject_trace_context
 
 import logging
+
 logger = logging.getLogger("autopr.queue")
 
 WebhookJob = IssueToPRContext | PRToMergeContext
+
 
 class WebhookQueueMessage(BaseModel):
     """Serializable queue envelope for webhook and resume workflow messages."""
@@ -97,6 +99,7 @@ class WebhookQueueMessage(BaseModel):
         if self.run_type == RunType.PR_TO_MERGE:
             return PRToMergeContext.model_validate(self.job_payload)
         raise ValueError(f"Unsupported run_type: {self.run_type}")
+
 
 class RedisWebhookQueue:
     """Redis-backed queue that separates pending, processing, and dead-letter jobs."""
@@ -351,6 +354,7 @@ class RedisWebhookQueue:
 
         await self._redis.aclose()
 
+
 def start_queue_depth_sampler(interval_sec: float = 5.0) -> threading.Thread:
     """
     Start a background sampler that exports Redis queue depths.
@@ -372,6 +376,7 @@ def start_queue_depth_sampler(interval_sec: float = 5.0) -> threading.Thread:
     }
 
     client = redis_sync.from_url(redis_url, decode_responses=True)
+
     def _loop() -> None:
         while True:
             try:

@@ -1,11 +1,14 @@
 import uuid
-from sqlalchemy import func, UniqueConstraint
-from sqlalchemy import ForeignKey
-from sqlalchemy import DateTime
 from sqlalchemy import Enum, MetaData, Table, Column, Integer, String, JSON
+from sqlalchemy import DateTime
+from sqlalchemy import ForeignKey
+from sqlalchemy import UniqueConstraint
+from sqlalchemy import func
+from sqlalchemy import text
 
 from core.contracts.enums import RunState
 from core.orchestrator.models import RunType
+from infra.storage.engine import get_engine
 
 metadata = MetaData()
 
@@ -85,11 +88,9 @@ dead_letter_jobs = Table(
     Column("updated_at", DateTime, server_default=func.now(), onupdate=func.now()),
 )
 
-from sqlalchemy import text
-from infra.storage.engine import get_engine
-
 # Stable key for the advisory lock guarding concurrent schema creation.
 _SCHEMA_INIT_LOCK_KEY = 0x4155544F5052  # "AUTOPR"
+
 
 def _init_schema(target_engine) -> None:
     if target_engine.dialect.name == "postgresql":
@@ -98,6 +99,7 @@ def _init_schema(target_engine) -> None:
             metadata.create_all(conn, checkfirst=True)
     else:
         metadata.create_all(target_engine, checkfirst=True)
+
 
 engine = get_engine()
 _init_schema(engine)

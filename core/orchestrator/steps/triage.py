@@ -11,6 +11,7 @@ from infra.github.issues import get_issue_details
 
 from observability.tracing import pipeline_step_attrs, traced
 
+
 class TriageStep(PipelineStep):
     stage = PipelineStage.TRIAGE
     success_state = RunState.TRIAGED.value
@@ -24,7 +25,7 @@ class TriageStep(PipelineStep):
             repo=repo,
             token=os.environ.get("GITHUB_TOKEN"),
         )
-        
+
         title = issue.get("title", "")
         body = issue.get("body", "")
         if not title:
@@ -33,6 +34,6 @@ class TriageStep(PipelineStep):
                 status=StageStatus.BLOCKED,
                 notes={"reason": "Triage blocked: issue title is missing."},
             )
-        
+
         triage_input = TriageWorkerInput(issue=TriageIssueInput(title=title, body=body))
         return runtime.run_worker(self.stage, TriageWorker.remote(), triage_input)

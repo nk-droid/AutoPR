@@ -15,6 +15,7 @@ from core.orchestrator.transitions import can_open_pr
 from core.orchestrator.transitions import can_transition
 from core.orchestrator.transitions import next_state
 
+
 def test_steps_for_run_type_matches_current_pipeline_order() -> None:
     issue_to_pr_stages = [step.stage for step in steps_for_run_type(RunType.ISSUE_TO_PR)]
     assert issue_to_pr_stages == [
@@ -35,25 +36,60 @@ def test_steps_for_run_type_matches_current_pipeline_order() -> None:
         PipelineStage.MERGE,
     ]
 
+
 def test_allowed_next_states_and_can_transition() -> None:
     next_states = allowed_next_states(RunState.RECEIVED.value, RunType.ISSUE_TO_PR)
     assert RunState.TRIAGED.value in next_states
     assert RunState.BLOCKED.value in next_states
-    assert can_transition(RunState.RECEIVED.value, RunState.TRIAGED.value, RunType.ISSUE_TO_PR) is True
-    assert can_transition(RunState.RECEIVED.value, RunState.BLOCKED.value, RunType.ISSUE_TO_PR) is True
-    assert can_transition(RunState.BLOCKED.value, RunState.TRIAGED.value, RunType.ISSUE_TO_PR) is False
-    assert can_transition(RunState.RECEIVED.value, RunState.MERGED.value, RunType.ISSUE_TO_PR) is False
-    assert can_transition(RunState.RECEIVED.value, RunState.RECEIVED.value, RunType.ISSUE_TO_PR) is True
-    assert can_transition(RunState.QA_RUNNING.value, RunState.CODING.value, RunType.ISSUE_TO_PR) is True
-    assert can_transition(RunState.PR_OPENED.value, RunState.REVIEW_PENDING.value, RunType.ISSUE_TO_PR) is True
-    assert can_transition(RunState.PR_OPENED.value, RunState.READY_TO_MERGE.value, RunType.ISSUE_TO_PR) is True
-    assert can_transition(RunState.RECEIVED.value, RunState.REVIEW_PENDING.value, RunType.PR_TO_MERGE) is True
+    assert (
+        can_transition(RunState.RECEIVED.value, RunState.TRIAGED.value, RunType.ISSUE_TO_PR) is True
+    )
+    assert (
+        can_transition(RunState.RECEIVED.value, RunState.BLOCKED.value, RunType.ISSUE_TO_PR) is True
+    )
+    assert (
+        can_transition(RunState.BLOCKED.value, RunState.TRIAGED.value, RunType.ISSUE_TO_PR) is False
+    )
+    assert (
+        can_transition(RunState.RECEIVED.value, RunState.MERGED.value, RunType.ISSUE_TO_PR) is False
+    )
+    assert (
+        can_transition(RunState.RECEIVED.value, RunState.RECEIVED.value, RunType.ISSUE_TO_PR)
+        is True
+    )
+    assert (
+        can_transition(RunState.QA_RUNNING.value, RunState.CODING.value, RunType.ISSUE_TO_PR)
+        is True
+    )
+    assert (
+        can_transition(RunState.PR_OPENED.value, RunState.REVIEW_PENDING.value, RunType.ISSUE_TO_PR)
+        is True
+    )
+    assert (
+        can_transition(RunState.PR_OPENED.value, RunState.READY_TO_MERGE.value, RunType.ISSUE_TO_PR)
+        is True
+    )
+    assert (
+        can_transition(RunState.RECEIVED.value, RunState.REVIEW_PENDING.value, RunType.PR_TO_MERGE)
+        is True
+    )
+
 
 def test_next_state_respects_transition_rules() -> None:
     assert next_state(RunState.RECEIVED.value, "", RunType.ISSUE_TO_PR) == RunState.RECEIVED.value
-    assert next_state(RunState.RECEIVED.value, RunState.TRIAGED.value, RunType.ISSUE_TO_PR) == RunState.TRIAGED.value
-    assert next_state(RunState.RECEIVED.value, RunState.BLOCKED.value, RunType.ISSUE_TO_PR) == RunState.BLOCKED.value
-    assert next_state(RunState.RECEIVED.value, RunState.MERGED.value, RunType.ISSUE_TO_PR) == RunState.RECEIVED.value
+    assert (
+        next_state(RunState.RECEIVED.value, RunState.TRIAGED.value, RunType.ISSUE_TO_PR)
+        == RunState.TRIAGED.value
+    )
+    assert (
+        next_state(RunState.RECEIVED.value, RunState.BLOCKED.value, RunType.ISSUE_TO_PR)
+        == RunState.BLOCKED.value
+    )
+    assert (
+        next_state(RunState.RECEIVED.value, RunState.MERGED.value, RunType.ISSUE_TO_PR)
+        == RunState.RECEIVED.value
+    )
+
 
 def test_can_open_pr_and_can_merge_pr() -> None:
     decision_missing = can_open_pr(None)
@@ -74,6 +110,7 @@ def test_can_open_pr_and_can_merge_pr() -> None:
     assert policy_denied.allowed is False
     merge_ok = can_merge_pr(StageResult(stage="review", status=StageStatus.OK))
     assert merge_ok.allowed is True
+
 
 def test_state_machine_records_history_and_validates_transitions() -> None:
     sm = StateMachine(initial_state=RunState.RECEIVED.value, run_type=RunType.ISSUE_TO_PR)

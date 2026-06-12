@@ -10,6 +10,7 @@ from infra.ray.actors import PRWorker
 
 from observability.tracing import pipeline_step_attrs, traced
 
+
 def _stage_results(context: Dict[str, Any]) -> Dict[str, StageResult]:
     # Keep prior stage outputs in context so later steps can make policy decisions.
     value = context.get("_stage_results")
@@ -18,6 +19,7 @@ def _stage_results(context: Dict[str, Any]) -> Dict[str, StageResult]:
     value = {}
     context["_stage_results"] = value
     return value
+
 
 class PROpenStep(PipelineStep):
     stage = PipelineStage.PR_OPEN
@@ -47,7 +49,9 @@ class PROpenStep(PipelineStep):
         payload = dict(context)
         payload.setdefault("repository", context.get("repository") or run.repository)
         payload.setdefault("issue_number", issue_number)
-        payload.setdefault("execute_remote_actions", bool(context.get("execute_remote_actions", False)))
+        payload.setdefault(
+            "execute_remote_actions", bool(context.get("execute_remote_actions", False))
+        )
         head_branch_value = context.get("head_branch") or context.get("pr_head")
         if not isinstance(head_branch_value, str) or not head_branch_value:
             head_branch_value = f"autopr/issue-{issue_number}"
@@ -56,6 +60,11 @@ class PROpenStep(PipelineStep):
         if not isinstance(base_branch_value, str) or not base_branch_value:
             base_branch_value = "main"
         payload.setdefault("base_branch", base_branch_value)
-        payload.setdefault("metadata", context.get("metadata") if isinstance(context.get("metadata"), dict) else dict(run.metadata))
+        payload.setdefault(
+            "metadata",
+            context.get("metadata")
+            if isinstance(context.get("metadata"), dict)
+            else dict(run.metadata),
+        )
         pr_context = IssueToPRContext(**payload)
         return runtime.run_worker(self.stage, PRWorker.remote(), PRWorkerInput(context=pr_context))

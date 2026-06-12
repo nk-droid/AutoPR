@@ -1,7 +1,10 @@
+# ruff: noqa: E402
 import asyncio
 import logging
+import os
 
 from dotenv import load_dotenv
+
 load_dotenv()
 
 from opentelemetry.trace import SpanKind
@@ -26,7 +29,6 @@ configure_tracing(service_name="autopr-worker")
 
 logger = logging.getLogger("autopr.worker")
 
-import os
 logger.info(
     "service starting",
     extra={
@@ -36,6 +38,7 @@ logger.info(
         "log_exporter": os.getenv("AUTOPR_LOG_EXPORTER", "otlp"),
     },
 )
+
 
 def _extract_repository(message: WebhookQueueMessage) -> str:
     """
@@ -57,6 +60,7 @@ def _extract_repository(message: WebhookQueueMessage) -> str:
         if isinstance(context, dict) and isinstance(context.get("repository"), str):
             return context["repository"]
     return ""
+
 
 def _handle_dead_letter(message: WebhookQueueMessage) -> None:
     """
@@ -119,6 +123,7 @@ def _handle_dead_letter(message: WebhookQueueMessage) -> None:
         run_type=message.run_type.value,
         result="error",
     ).inc()
+
 
 async def run() -> None:
     """Main worker loop that continuously reserves messages from the webhook queue and processes them."""

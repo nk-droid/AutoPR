@@ -15,6 +15,7 @@ logger = logging.getLogger(__name__)
 
 ModelT = TypeVar("ModelT", bound=BaseModel)
 
+
 @traced("llm.invoke_chain", attributes=llm_chain_attrs)
 def invoke_chain(
     *,

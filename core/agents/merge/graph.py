@@ -2,6 +2,7 @@ from typing import Any, TypedDict
 from langgraph.graph import END, StateGraph
 from core.orchestrator.models import StageStatus
 
+
 class MergeState(TypedDict):
     context: dict[str, Any]
     status: StageStatus
@@ -12,6 +13,7 @@ class MergeState(TypedDict):
     merge_result: dict[str, Any]
     notes: dict[str, Any]
     final_output: dict[str, Any]
+
 
 # Prepare -> Merge -> Finalize
 def build_merge_graph(nodes) -> StateGraph[MergeState]:
@@ -25,5 +27,5 @@ def build_merge_graph(nodes) -> StateGraph[MergeState]:
     graph.add_edge("prepare", "merge")
     graph.add_edge("merge", "finalize")
     graph.add_edge("finalize", END)
-    
+
     return graph.compile()

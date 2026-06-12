@@ -8,6 +8,7 @@ logger = logging.getLogger(__name__)
 
 _DEFAULT_CONFIG_PATH = Path(__file__).resolve().parents[2] / "configs" / "llm_models.yaml"
 
+
 class ModelRegistry:
     """Loads model definitions, limits, and endpoints from YAML configuration."""
 
@@ -29,7 +30,9 @@ class ModelRegistry:
             raise
 
         providers = self.config.get("providers", {}) if isinstance(self.config, dict) else {}
-        model_count = sum(len(p.get("models", {})) for p in providers.values() if isinstance(p, dict))
+        model_count = sum(
+            len(p.get("models", {})) for p in providers.values() if isinstance(p, dict)
+        )
         logger.info(
             "llm model registry loaded",
             extra={
@@ -53,13 +56,9 @@ class ModelRegistry:
             Merged model configuration used by clients and limiters.
         """
 
-        provider_cfg = deepcopy(
-            self.config["providers"][provider]
-        )
+        provider_cfg = deepcopy(self.config["providers"][provider])
 
-        model_cfg = provider_cfg["models"][
-            model_name
-        ]
+        model_cfg = provider_cfg["models"][model_name]
 
         limits = provider_cfg.get("limits", {}).copy()
         limits.update(model_cfg.get("limits", {}))
@@ -68,9 +67,7 @@ class ModelRegistry:
             "provider": provider,
             "model_name": model_name,
             "model": model_cfg["model"],
-            "endpoint": provider_cfg.get(
-                "endpoint"
-            ),
+            "endpoint": provider_cfg.get("endpoint"),
             "limits": limits,
         }
 
@@ -83,5 +80,6 @@ class ModelRegistry:
         """
 
         return self.config["providers"]
+
 
 registry = ModelRegistry()

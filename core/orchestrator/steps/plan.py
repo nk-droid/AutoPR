@@ -10,6 +10,7 @@ from infra.ray.actors import PlanWorker
 
 from observability.tracing import pipeline_step_attrs, traced
 
+
 class PlanStep(PipelineStep):
     stage = PipelineStage.PLAN
     success_state = RunState.PLANNED.value
@@ -29,7 +30,7 @@ class PlanStep(PipelineStep):
                 status=StageStatus.BLOCKED,
                 notes={"reason": f"Plan blocked: invalid triage output ({exc})."},
             )
-        
+
         repo_map = context.get("repo_map", "")
         if not isinstance(repo_map, str):
             repo_map = ""

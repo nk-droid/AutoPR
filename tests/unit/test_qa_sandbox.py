@@ -4,6 +4,7 @@ import pytest
 
 from infra.qa.sandbox import Sandbox
 
+
 def test_sandbox_copies_repo_and_runs_command(tmp_path) -> None:
     repo = tmp_path / "repo"
     repo.mkdir()
@@ -18,6 +19,7 @@ def test_sandbox_copies_repo_and_runs_command(tmp_path) -> None:
         assert result.exit_code == 0
         assert result.duration_sec >= 0
     assert sandbox.workspace is None
+
 
 def test_sandbox_run_requires_context_manager(tmp_path) -> None:
     sandbox = Sandbox(str(tmp_path))

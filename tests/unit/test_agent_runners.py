@@ -32,6 +32,7 @@ import core.agents.qa.runner as qa_runner
 import core.agents.review.runner as review_runner
 import core.agents.triage.runner as triage_runner
 
+
 class _FakeGraph:
     def __init__(self, response: dict[str, Any]) -> None:
         self.response = response
@@ -40,6 +41,7 @@ class _FakeGraph:
     def invoke(self, payload: dict[str, Any]) -> dict[str, Any]:
         self.last_payload = payload
         return dict(self.response)
+
 
 def _triage_result() -> TriageResult:
     return TriageResult(
@@ -54,6 +56,7 @@ def _triage_result() -> TriageResult:
         questions=[],
     )
 
+
 def _plan_step() -> PlanStep:
     return PlanStep(
         id=uuid.UUID("11111111-1111-1111-1111-111111111111"),
@@ -63,6 +66,7 @@ def _plan_step() -> PlanStep:
         files=["apps/api/routes/webhooks.py"],
         tests=["tests/integration/test_github_webhook_handler.py::test_case"],
     )
+
 
 def _issue_context() -> IssueToPRContext:
     return IssueToPRContext(
@@ -74,6 +78,7 @@ def _issue_context() -> IssueToPRContext:
         metadata={"source": "test"},
     )
 
+
 def _merge_context() -> PRToMergeContext:
     return PRToMergeContext(
         repository="acme/repo",
@@ -82,6 +87,7 @@ def _merge_context() -> PRToMergeContext:
         execute_remote_actions=False,
         metadata={"source": "test"},
     )
+
 
 def test_triage_agent_runner_initial_payload(monkeypatch) -> None:
     fake = _FakeGraph({"status": StageStatus.NEEDS_REVIEW, "final_output": {"a": 1}})
@@ -96,6 +102,7 @@ def test_triage_agent_runner_initial_payload(monkeypatch) -> None:
     assert fake.last_payload["status"] == StageStatus.OK
     assert fake.last_payload["final_output"] == {}
 
+
 def test_plan_agent_runner_initial_payload(monkeypatch) -> None:
     fake = _FakeGraph({"status": StageStatus.BLOCKED, "final_output": {"plan": "x"}})
     monkeypatch.setattr(plan_runner, "build_plan_graph", lambda _nodes: fake)
@@ -107,6 +114,7 @@ def test_plan_agent_runner_initial_payload(monkeypatch) -> None:
     assert "triage_result" in fake.last_payload
     assert fake.last_payload["steps"] == []
     assert fake.last_payload["open_questions"] == []
+
 
 def test_code_agent_runner_initial_payload(monkeypatch) -> None:
     fake = _FakeGraph({"status": StageStatus.OK, "final_output": {"files_map": {"a.py": "x"}}})
@@ -121,6 +129,7 @@ def test_code_agent_runner_initial_payload(monkeypatch) -> None:
     assert fake.last_payload["repo_map"] == "repo-map"
     assert fake.last_payload["file_contents"] == {"a.py": "old"}
     assert fake.last_payload["status"] == StageStatus.OK
+
 
 def test_qa_agent_runner_initial_payload(monkeypatch) -> None:
     fake = _FakeGraph({"status": StageStatus.NEEDS_REVIEW, "final_output": {"summary": "warn"}})
@@ -138,6 +147,7 @@ def test_qa_agent_runner_initial_payload(monkeypatch) -> None:
     assert fake.last_payload["tool_results"] == tools
     assert fake.last_payload["checks"] == []
 
+
 def test_pr_agent_runner_initial_payload(monkeypatch) -> None:
     fake = _FakeGraph({"status": StageStatus.OK, "final_output": {"pull_request_number": 42}})
     monkeypatch.setattr(pr_runner, "build_pr_graph", lambda _nodes: fake)
@@ -150,6 +160,7 @@ def test_pr_agent_runner_initial_payload(monkeypatch) -> None:
     assert fake.last_payload["request"] is None
     assert fake.last_payload["pull_request_number"] is None
 
+
 def test_review_agent_runner_initial_payload(monkeypatch) -> None:
     fake = _FakeGraph({"status": StageStatus.BLOCKED, "final_output": {"required_actions": ["x"]}})
     monkeypatch.setattr(review_runner, "build_review_graph", lambda _nodes: fake)
@@ -161,8 +172,11 @@ def test_review_agent_runner_initial_payload(monkeypatch) -> None:
     assert fake.last_payload["context"].pull_request_number == 19
     assert fake.last_payload["required_actions"] == []
 
+
 def test_publish_agent_runner_initial_payload(monkeypatch) -> None:
-    fake = _FakeGraph({"status": StageStatus.OK, "final_output": {"outputs": {"publish_output": "ok"}}})
+    fake = _FakeGraph(
+        {"status": StageStatus.OK, "final_output": {"outputs": {"publish_output": "ok"}}}
+    )
     monkeypatch.setattr(publish_runner, "build_publish_graph", lambda _nodes: fake)
     agent = PublishAgent()
     status, output = agent.run({"repository": "acme/repo", "execute_remote_actions": True})
@@ -174,8 +188,14 @@ def test_publish_agent_runner_initial_payload(monkeypatch) -> None:
     assert fake.last_payload["files_payload"] == {}
     assert fake.last_payload["final_output"] == {}
 
+
 def test_merge_agent_runner_initial_payload(monkeypatch) -> None:
-    fake = _FakeGraph({"status": StageStatus.NEEDS_REVIEW, "final_output": {"outputs": {"merge_output": {"status": "needs_review"}}}})
+    fake = _FakeGraph(
+        {
+            "status": StageStatus.NEEDS_REVIEW,
+            "final_output": {"outputs": {"merge_output": {"status": "needs_review"}}},
+        }
+    )
     monkeypatch.setattr(merge_runner, "build_merge_graph", lambda _nodes: fake)
     agent = MergeAgent()
     status, output = agent.run({"repository": "acme/repo", "pull_request_number": 17})

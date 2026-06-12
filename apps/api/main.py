@@ -26,6 +26,7 @@ logger.info(
     },
 )
 
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     start_queue_depth_sampler()
@@ -33,9 +34,12 @@ async def lifespan(app: FastAPI):
     try:
         yield
     finally:
-        logger.info("api shutting down", extra={"event": "service_shutdown", "service": "autopr-api"})
+        logger.info(
+            "api shutting down", extra={"event": "service_shutdown", "service": "autopr-api"}
+        )
         if get_webhook_queue.cache_info().currsize > 0:
             await get_webhook_queue().close()
+
 
 app = FastAPI(title="AutoPR API", lifespan=lifespan)
 

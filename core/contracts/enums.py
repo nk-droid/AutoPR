@@ -1,5 +1,6 @@
 from enum import Enum
 
+
 class PipelineStage(str, Enum):
     TRIAGE = "triage"
     PLAN = "plan"
@@ -10,6 +11,7 @@ class PipelineStage(str, Enum):
     PR_OPEN = "pr_open"
     REVIEW = "review"
     MERGE = "merge"
+
 
 class RunState(str, Enum):
     RECEIVED = "RECEIVED"
@@ -24,28 +26,34 @@ class RunState(str, Enum):
     MERGED = "MERGED"
     BLOCKED = "BLOCKED"
 
+
 class CheckStatus(str, Enum):
     PASS = "pass"
     WARN = "warn"
     FAIL = "fail"
+
 
 class RiskLevel(str, Enum):
     LOW = "low"
     MEDIUM = "medium"
     HIGH = "high"
 
+
 class GitHubWebhookEventType(str, Enum):
     ISSUES = "issues"
     PULL_REQUEST_REVIEW = "pull_request_review"
+
 
 class GitHubPullRequestReviewAction(str, Enum):
     SUBMITTED = "submitted"
     EDITED = "edited"
     DISMISSED = "dismissed"
 
+
 class GitHubPullRequestState(str, Enum):
     OPEN = "open"
     CLOSED = "closed"
+
 
 class GitHubReviewState(str, Enum):
     APPROVED = "approved"
@@ -53,6 +61,7 @@ class GitHubReviewState(str, Enum):
     COMMENTED = "commented"
     DISMISSED = "dismissed"
     PENDING = "pending"
+
 
 class GitHubMergeableState(str, Enum):
     CLEAN = "clean"
@@ -63,19 +72,23 @@ class GitHubMergeableState(str, Enum):
     BEHIND = "behind"
     DRAFT = "draft"
 
+
 class GitHubIssueState(str, Enum):
     OPEN = "open"
     CLOSED = "closed"
     ALL = "all"
+
 
 class GitHubIssueSort(str, Enum):
     CREATED = "created"
     UPDATED = "updated"
     COMMENTS = "comments"
 
+
 class GitHubSortDirection(str, Enum):
     ASC = "asc"
     DESC = "desc"
+
 
 class GitHubIssuePickStrategy(str, Enum):
     OLDEST_OPEN = "oldest_open"
@@ -83,8 +96,10 @@ class GitHubIssuePickStrategy(str, Enum):
     LEAST_COMMENTS = "least_comments"
     MOST_COMMENTS = "most_comments"
 
+
 class GitHubPathSegment(str, Enum):
     ISSUES = "issues"
+
 
 class WebhookResultType(str, Enum):
     ACCEPTED = "accepted"

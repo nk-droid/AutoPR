@@ -6,6 +6,7 @@ from core.contracts.qa import QACheck
 from core.contracts.run_context import ToolRunResult
 from core.orchestrator.models import StageStatus
 
+
 class QAState(TypedDict):
     coding_output: CodeOutput
     coding_step: PlanStep
@@ -15,6 +16,7 @@ class QAState(TypedDict):
     checks: list[QACheck]
     notes: dict[str, Any]
     final_output: dict[str, Any]
+
 
 # Evaluate inputs -> Run checks -> Finalize
 def build_qa_graph(nodes) -> StateGraph[QAState]:
@@ -28,5 +30,5 @@ def build_qa_graph(nodes) -> StateGraph[QAState]:
     graph.add_edge("evaluate_inputs", "run_checks")
     graph.add_edge("run_checks", "finalize")
     graph.add_edge("finalize", END)
-    
+
     return graph.compile()

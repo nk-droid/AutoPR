@@ -8,6 +8,7 @@ from core.orchestrator.models import StageStatus
 
 logger = logging.getLogger(__name__)
 
+
 class MergeAgent:
     def __init__(self):
         self.graph = build_merge_graph(nodes)

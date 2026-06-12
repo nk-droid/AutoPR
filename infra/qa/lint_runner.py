@@ -3,6 +3,7 @@ import json
 from infra.qa.models import LintIssue, LintResult
 from infra.qa.sandbox import Sandbox
 
+
 class LintRunner:
     def __init__(self, sandbox: Sandbox):
         self.sandbox = sandbox
@@ -17,7 +18,7 @@ class LintRunner:
         if not output:
             # Ruff returns empty JSON output when there are no findings.
             return LintResult(success=True, issues=[])
-        
+
         parsed = json.loads(output)
         issues: list[LintIssue] = []
         for issue in parsed:
@@ -29,7 +30,7 @@ class LintRunner:
                     message=issue["message"],
                 )
             )
-            
+
         return LintResult(
             success=len(issues) == 0,
             issues=issues,

@@ -1,11 +1,13 @@
 from typing import Any
 from pydantic import BaseModel, Field
 
+
 class StoredArtifact(BaseModel):
     run_id: str
     key: str
     value: dict[str, Any] = Field(default_factory=dict)
     updated_at_utc: str
+
 
 class StoredRunEvent(BaseModel):
     id: str
@@ -13,6 +15,7 @@ class StoredRunEvent(BaseModel):
     event_type: str
     payload: dict[str, Any] = Field(default_factory=dict)
     created_at_utc: str
+
 
 class StoredRun(BaseModel):
     run_id: str

@@ -6,6 +6,7 @@ from infra.github.auth import resolve_github_token, resolve_optional_github_toke
 
 logger = logging.getLogger(__name__)
 
+
 class GitHubAPIError(RuntimeError):
     """Wraps GitHub API failures with normalized request and response details."""
 
@@ -26,8 +27,10 @@ class GitHubAPIError(RuntimeError):
         self.message = message
         self.response_payload = response_payload
 
+
 def _as_text(value: Any) -> str:
     return value.strip() if isinstance(value, str) else ""
+
 
 def _stringify_error_item(item: Any) -> str:
     if isinstance(item, dict):
@@ -45,6 +48,7 @@ def _stringify_error_item(item: Any) -> str:
             return message
     item_text = str(item).strip()
     return item_text
+
 
 def _extract_error_details(payload: Any) -> str:
     if isinstance(payload, dict):
@@ -68,6 +72,7 @@ def _extract_error_details(payload: Any) -> str:
             return " | ".join(details)
     payload_text = str(payload).strip()
     return payload_text
+
 
 class GitHubClient:
     """Small GitHub REST client used by pipeline stages and webhook helpers."""
@@ -323,7 +328,9 @@ class GitHubClient:
             raise ValueError("Unexpected GitHub response while getting pull request")
         return payload
 
-    def list_pull_request_files(self, repo: str, pull_number: int, *, per_page: int = 100) -> list[dict]:
+    def list_pull_request_files(
+        self, repo: str, pull_number: int, *, per_page: int = 100
+    ) -> list[dict]:
         """
         Fetch changed files for a pull request review decision.
 
@@ -415,6 +422,7 @@ class GitHubClient:
             },
         )
         return response_payload
+
 
 def get_issue(repo: str, issue_number: int) -> dict:
     """

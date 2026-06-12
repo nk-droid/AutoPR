@@ -10,6 +10,7 @@ from core.contracts.triage import TriageResult
 import core.agents.plan.nodes as plan_nodes
 import core.agents.triage.nodes as triage_nodes
 
+
 def test_triage_nodes_flow_with_dict_inputs(monkeypatch) -> None:
     def fake_invoke_chain(*, output_model, **kwargs):
         del kwargs
@@ -23,7 +24,9 @@ def test_triage_nodes_flow_with_dict_inputs(monkeypatch) -> None:
         if output_model is Risk:
             return Risk(level=RiskLevel.MEDIUM, reasons=["parser changes"])
         if output_model is AmbiguityResult:
-            return AmbiguityResult(status=StageStatus.NEEDS_REVIEW, questions=["Should we support XML?"])
+            return AmbiguityResult(
+                status=StageStatus.NEEDS_REVIEW, questions=["Should we support XML?"]
+            )
         raise AssertionError("unexpected output model")
 
     monkeypatch.setattr(triage_nodes, "invoke_chain", fake_invoke_chain)
@@ -37,6 +40,7 @@ def test_triage_nodes_flow_with_dict_inputs(monkeypatch) -> None:
     assert state["risk"].level == RiskLevel.MEDIUM
     assert state["final_output"]["ambiguity"]["questions"] == ["Should we support XML?"]
     assert state["final_output"]["questions"] == ["Should we support XML?"]
+
 
 def test_plan_nodes_flow_merges_dependencies_and_questions(monkeypatch) -> None:
     def fake_invoke_chain(*, output_model, **kwargs):

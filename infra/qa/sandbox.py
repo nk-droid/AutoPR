@@ -9,7 +9,9 @@ from infra.qa.models import CommandResult
 from infra.repo_worker.workspace import get_work_base, keep_qa_workspace
 
 import logging
+
 logger = logging.getLogger(__name__)
+
 
 class Sandbox:
     def __init__(self, repo_path: str):
@@ -57,7 +59,7 @@ class Sandbox:
     def run(self, command: list[str], timeout: int = 300) -> CommandResult:
         if self.workspace is None:
             raise RuntimeError("Sandbox workspace is not initialized")
-        
+
         start = time.time()
         process = subprocess.run(
             command,
@@ -68,7 +70,7 @@ class Sandbox:
             check=False,
         )
         end = time.time()
-        
+
         return CommandResult(
             success=process.returncode == 0,
             exit_code=process.returncode,

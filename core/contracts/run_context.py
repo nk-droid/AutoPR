@@ -6,6 +6,7 @@ from core.contracts.enums import CheckStatus
 from core.contracts.plan import PlanStep
 from core.contracts.triage import TriageResult
 
+
 class IssueToPRContext(BaseModel):
     model_config = ConfigDict(extra="allow")
     repository: str
@@ -15,6 +16,7 @@ class IssueToPRContext(BaseModel):
     base_branch: str
     metadata: dict[str, Any]
 
+
 class PRToMergeContext(BaseModel):
     model_config = ConfigDict(extra="allow")
     repository: str
@@ -23,16 +25,20 @@ class PRToMergeContext(BaseModel):
     execute_remote_actions: bool
     metadata: dict[str, Any]
 
+
 class TriageIssueInput(BaseModel):
     title: str
     body: Optional[str] = ""
 
+
 class TriageWorkerInput(BaseModel):
     issue: TriageIssueInput
+
 
 class PlanWorkerInput(BaseModel):
     triage_result: TriageResult
     repo_map: str = ""
+
 
 class CodeWorkerInput(BaseModel):
     step: PlanStep
@@ -41,6 +47,7 @@ class CodeWorkerInput(BaseModel):
     dependency_files: dict[str, str] = {}
     qa_feedback: str = ""
 
+
 class QAJobPayload(BaseModel):
     coding_output: CodeOutput
     coding_step: PlanStep
@@ -48,24 +55,30 @@ class QAJobPayload(BaseModel):
     qa_timeout_sec: int
     coverage_threshold: float
 
+
 class ToolRunResult(BaseModel):
     name: str
     status: CheckStatus
     payload: dict[str, Any]
+
 
 class QAWorkerInput(BaseModel):
     coding_output: CodeOutput
     coding_step: PlanStep
     tool_results: list[ToolRunResult]
 
+
 class PRWorkerInput(BaseModel):
     context: IssueToPRContext
+
 
 class ReviewWorkerInput(BaseModel):
     context: PRToMergeContext
 
+
 class PublishWorkerInput(BaseModel):
     context: dict[str, Any]
+
 
 class MergeWorkerInput(BaseModel):
     context: dict[str, Any]

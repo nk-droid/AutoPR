@@ -2,6 +2,7 @@ import pytest
 
 import observability.tracing as tracing
 
+
 def test_resolve_attributes_with_mapping_and_callable() -> None:
     def fn(a: int, b: int = 2) -> int:
         return a + b
@@ -14,6 +15,7 @@ def test_resolve_attributes_with_mapping_and_callable() -> None:
 
     attrs2 = tracing._resolve_attributes(fn, (3,), {}, attr_builder)
     assert attrs2 == {"sum": 5}
+
 
 def test_traced_wraps_sync_and_raises_errors() -> None:
     calls: list[dict] = []
@@ -35,6 +37,7 @@ def test_traced_wraps_sync_and_raises_errors() -> None:
 
     with pytest.raises(RuntimeError, match="explode"):
         boom()
+
 
 def test_traced_remote_ignores_context_arg_in_attribute_factory() -> None:
     observed: list[dict] = []

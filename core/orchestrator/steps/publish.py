@@ -6,6 +6,7 @@ from core.orchestrator.steps.base import PipelineStep, StepRuntime
 from infra.ray.actors import PublishWorker
 from observability.tracing import traced, pipeline_step_attrs
 
+
 class PublishStep(PipelineStep):
     stage = PipelineStage.PUBLISH
     success_state = RunState.PUBLISHED.value
@@ -16,7 +17,11 @@ class PublishStep(PipelineStep):
         payload["repository"] = context.get("repository") or run.repository
         payload["issue_number"] = context.get("issue_number") or run.issue_number
         payload["execute_remote_actions"] = bool(context.get("execute_remote_actions", False))
-        payload["metadata"] = context.get("metadata") if isinstance(context.get("metadata"), dict) else dict(run.metadata)
+        payload["metadata"] = (
+            context.get("metadata")
+            if isinstance(context.get("metadata"), dict)
+            else dict(run.metadata)
+        )
         payload["run_id"] = str(run.run_id)
         worker_result = runtime.run_worker(
             self.stage,

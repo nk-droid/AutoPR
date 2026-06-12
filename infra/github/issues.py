@@ -12,6 +12,7 @@ from infra.github.client import GitHubClient
 
 logger = logging.getLogger(__name__)
 
+
 def get_issues(
     repo: str,
     *,
@@ -54,6 +55,7 @@ def get_issues(
     finally:
         client.close()
 
+
 def resolve_issue_reference(issue_reference: str | int, repo: str | None = None) -> tuple[str, int]:
     """
     Resolve an issue number, shorthand, or GitHub URL into repository details.
@@ -90,9 +92,9 @@ def resolve_issue_reference(issue_reference: str | int, repo: str | None = None)
             raise ValueError("repo is required when issue reference is numeric")
         return repo, int(reference)
     raise ValueError(
-        "Issue reference must be an issue number (e.g. 123 or #123) "
-        "or a full GitHub issue URL."
+        "Issue reference must be an issue number (e.g. 123 or #123) or a full GitHub issue URL."
     )
+
 
 def get_issue_details(
     issue_reference: str | int,
@@ -135,17 +137,20 @@ def get_issue_details(
     finally:
         client.close()
 
+
 def _issue_sort_key(issue: dict[str, Any], field: str) -> str:
     value = issue.get(field)
     if isinstance(value, str):
         return value
     return ""
 
+
 def _comment_count(issue: dict[str, Any]) -> int:
     value = issue.get("comments")
     if isinstance(value, int) and not isinstance(value, bool):
         return value
     return 0
+
 
 def pick_issue(
     issues: list[dict],
@@ -172,7 +177,9 @@ def pick_issue(
     if strategy_enum == GitHubIssuePickStrategy.OLDEST_OPEN:
         return sorted(issues, key=lambda issue: _issue_sort_key(issue, "created_at"))[0]
     if strategy_enum == GitHubIssuePickStrategy.NEWEST_OPEN:
-        return sorted(issues, key=lambda issue: _issue_sort_key(issue, "created_at"), reverse=True)[0]
+        return sorted(issues, key=lambda issue: _issue_sort_key(issue, "created_at"), reverse=True)[
+            0
+        ]
     if strategy_enum == GitHubIssuePickStrategy.LEAST_COMMENTS:
         return sorted(
             issues,
@@ -191,6 +198,7 @@ def pick_issue(
             reverse=True,
         )[0]
     raise ValueError(f"Unknown issue pick strategy: {strategy}")
+
 
 def get_and_pick_issue(
     repo: str,

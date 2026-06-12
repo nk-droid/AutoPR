@@ -8,6 +8,7 @@ from infra.llm.rate_limit import build_limiter
 
 logger = logging.getLogger(__name__)
 
+
 class LLMGateway:
     """Routes model calls through per-model rate limits and concurrency caps.
 
@@ -120,5 +121,6 @@ class LLMGateway:
         return await asyncio.to_thread(
             self.invoke, provider=provider, model=model, prompt=prompt, config=config
         )
+
 
 gateway = LLMGateway()

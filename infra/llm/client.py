@@ -18,10 +18,12 @@ PROVIDER_MAPPING = {
 _DEFAULT_PROVIDER = "ollama"
 _DEFAULT_MODEL_NAME = "qwen3-coder"
 
+
 class LLMClient(NamedTuple):
     client: object
     provider: str
     model: str  # underlying model id; also the gateway rate-limit routing key
+
 
 def create_client(
     *,

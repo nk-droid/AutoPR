@@ -13,8 +13,10 @@ from opentelemetry.sdk.metrics.view import ExplicitBucketHistogramAggregation, V
 from opentelemetry.sdk.resources import Resource
 from opentelemetry.exporter.otlp.proto.grpc.metric_exporter import OTLPMetricExporter
 
+
 def _v(value) -> str:
     return value.value if hasattr(value, "value") else str(value)
+
 
 WEBHOOKS_TOTAL = Counter(
     "autopr_webhooks_total",
@@ -73,6 +75,8 @@ QA_TOOL_DURATION_SECONDS = Histogram(
 )
 
 _metrics_configured = False
+
+
 def configure_metrics(service_name: str | None = None) -> None:
     """
     Configure OpenTelemetry metrics once for the current process.
@@ -124,14 +128,13 @@ def configure_metrics(service_name: str | None = None) -> None:
             ),
             View(
                 instrument_name="autopr_llm_tokens_per_second",
-                aggregation=ExplicitBucketHistogramAggregation(
-                    (1, 5, 10, 25, 50, 100, 250, 500)
-                ),
+                aggregation=ExplicitBucketHistogramAggregation((1, 5, 10, 25, 50, 100, 250, 500)),
             ),
         ],
     )
     otel_metrics.set_meter_provider(provider)
     _metrics_configured = True
+
 
 def flush_metrics(timeout_millis: int = 5000) -> None:
     """
@@ -146,6 +149,7 @@ def flush_metrics(timeout_millis: int = 5000) -> None:
     force_flush = getattr(otel_metrics.get_meter_provider(), "force_flush", None)
     if force_flush is not None:
         force_flush(timeout_millis=timeout_millis)
+
 
 _meter = otel_metrics.get_meter("autopr")
 
@@ -194,6 +198,7 @@ LLM_PARSE_ERRORS_TOTAL = _meter.create_counter(
     description="Pydantic validation failures on LLM output.",
 )
 
+
 def observe_stage(run_type, stage, status, duration_sec: float) -> None:
     """
     Record pipeline stage result and duration metrics.
@@ -209,6 +214,7 @@ def observe_stage(run_type, stage, status, duration_sec: float) -> None:
     STAGE_RESULTS_TOTAL.labels(*labels).inc()
     STAGE_DURATION_SECONDS.labels(*labels).observe(duration_sec)
 
+
 def observe_run(run_type, final_state) -> None:
     """
     Record a completed pipeline run by workflow type and final state.
@@ -219,6 +225,7 @@ def observe_run(run_type, final_state) -> None:
     """
 
     RUNS_TOTAL.labels(_v(run_type), _v(final_state)).inc()
+
 
 def start_worker_metrics_server(port: int = 9000) -> None:
     """

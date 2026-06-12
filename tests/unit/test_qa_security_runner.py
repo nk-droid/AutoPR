@@ -3,6 +3,7 @@ import json
 from infra.qa.models import CommandResult
 from infra.qa.security_runner import SecurityRunner
 
+
 class FakeSandbox:
     def __init__(self, result: CommandResult) -> None:
         self.python = "python3"
@@ -13,9 +14,12 @@ class FakeSandbox:
         self.calls.append((command, timeout))
         return self.result
 
+
 def test_security_runner_handles_invalid_json_output() -> None:
     sandbox = FakeSandbox(
-        CommandResult(success=False, exit_code=1, stdout="not-json", stderr="boom", duration_sec=0.1)
+        CommandResult(
+            success=False, exit_code=1, stdout="not-json", stderr="boom", duration_sec=0.1
+        )
     )
     runner = SecurityRunner(sandbox)
     result = runner.run(targets=["pkg"], timeout=7)
@@ -24,6 +28,7 @@ def test_security_runner_handles_invalid_json_output() -> None:
     assert result.raw_output == "not-json"
     assert sandbox.calls[0][0] == ["python3", "-m", "bandit", "-r", "pkg", "-f", "json"]
     assert sandbox.calls[0][1] == 7
+
 
 def test_security_runner_reports_issues() -> None:
     payload = {
@@ -37,7 +42,9 @@ def test_security_runner_reports_issues() -> None:
         ]
     }
     sandbox = FakeSandbox(
-        CommandResult(success=True, exit_code=0, stdout=json.dumps(payload), stderr="", duration_sec=0.1)
+        CommandResult(
+            success=True, exit_code=0, stdout=json.dumps(payload), stderr="", duration_sec=0.1
+        )
     )
     runner = SecurityRunner(sandbox)
     result = runner.run()
@@ -50,9 +57,16 @@ def test_security_runner_reports_issues() -> None:
     assert issue.issue == "use of assert"
     assert sandbox.calls[0][0] == ["python3", "-m", "bandit", "-r", ".", "-f", "json"]
 
+
 def test_security_runner_passes_when_no_issues() -> None:
     sandbox = FakeSandbox(
-        CommandResult(success=True, exit_code=0, stdout=json.dumps({"results": []}), stderr="", duration_sec=0.1)
+        CommandResult(
+            success=True,
+            exit_code=0,
+            stdout=json.dumps({"results": []}),
+            stderr="",
+            duration_sec=0.1,
+        )
     )
     runner = SecurityRunner(sandbox)
     result = runner.run(targets=["src"])

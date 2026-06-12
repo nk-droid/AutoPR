@@ -4,8 +4,10 @@ from core.orchestrator.models import StageStatus
 from infra.github.client import GitHubClient
 from observability.tracing import traced, langgraph_node_attrs
 
+
 def _normalize_text(value: Any) -> str:
     return value.strip() if isinstance(value, str) else ""
+
 
 @traced(
     "merge_step.prepare",
@@ -39,14 +41,18 @@ def prepare(state: dict[str, Any]) -> dict[str, Any]:
         state["status"] = StageStatus.BLOCKED
         state["notes"] = {"reason": "Merge blocked: invalid context payload."}
         return state
-    
+
     merge_decision = context.get("_merge_decision")
 
     # Block the merge if the context contains a _merge_decision that disallows merging,
     # and include the reason and any blocking reasons in the notes for observability.
     if isinstance(merge_decision, dict) and not bool(merge_decision.get("allowed", True)):
         reason_value = merge_decision.get("reason")
-        reason = reason_value if isinstance(reason_value, str) and reason_value else "Merge decision blocked"
+        reason = (
+            reason_value
+            if isinstance(reason_value, str) and reason_value
+            else "Merge decision blocked"
+        )
         blocking_reasons = merge_decision.get("blocking_reasons", [])
         state["status"] = StageStatus.BLOCKED
         state["notes"] = {
@@ -55,7 +61,7 @@ def prepare(state: dict[str, Any]) -> dict[str, Any]:
         }
         state["merge_result"] = {}
         return state
-    
+
     repository = _normalize_text(context.get("repository"))
     raw_pr_number = context.get("pull_request_number")
     pull_request_number = raw_pr_number if isinstance(raw_pr_number, int) else None
@@ -71,7 +77,7 @@ def prepare(state: dict[str, Any]) -> dict[str, Any]:
             "merge_sha": "",
         }
         return state
-    
+
     # If the context explicitly indicates that remote actions should not be executed,
     # block the merge and set status to NEEDS_REVIEW to indicate that human intervention
     # is required to proceed.
@@ -85,7 +91,7 @@ def prepare(state: dict[str, Any]) -> dict[str, Any]:
             "merge_sha": "",
         }
         return state
-    
+
     # Normalize the merge method and commit title, and set the prepared parameters in the state
     # for use in the merge node. Default the merge method to "squash" if not provided.
     merge_method = _normalize_text(context.get("merge_method")) or "squash"
@@ -98,6 +104,7 @@ def prepare(state: dict[str, Any]) -> dict[str, Any]:
     state["commit_title"] = commit_title
     state["notes"] = {"merge_method": merge_method}
     return state
+
 
 @traced(
     "merge_step.merge",
@@ -127,7 +134,7 @@ def merge(state: dict[str, Any]) -> dict[str, Any]:
 
     if state.get("status") != StageStatus.OK:
         return state
-    
+
     context = state.get("context")
 
     # Block the merge if the context is missing or invalid
@@ -141,7 +148,7 @@ def merge(state: dict[str, Any]) -> dict[str, Any]:
             "error": "invalid_context",
         }
         return state
-    
+
     # Create a GitHub client using the provided token
     token_value = context.get("github_token")
     token = token_value if isinstance(token_value, str) else os.environ.get("GITHUB_TOKEN")
@@ -185,6 +192,7 @@ def merge(state: dict[str, Any]) -> dict[str, Any]:
     state["notes"] = notes
     return state
 
+
 @traced(
     "merge_step.finalize",
     attributes=langgraph_node_attrs("merge", "finalize"),
@@ -210,12 +218,12 @@ def finalize(state: dict[str, Any]) -> dict[str, Any]:
     notes = state.get("notes", {})
     if not isinstance(notes, dict):
         notes = {}
-        
+
     merge_result = state.get("merge_result")
     outputs: dict[str, Any] = {}
     if isinstance(merge_result, dict) and merge_result:
         outputs = {"merge_output": merge_result}
-        
+
     state["final_output"] = {
         "outputs": outputs,
         "notes": notes,

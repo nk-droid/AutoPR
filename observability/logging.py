@@ -12,12 +12,13 @@ from opentelemetry.sdk.resources import Resource
 _configured = False
 _logger_provider: LoggerProvider | None = None
 
+
 def setup_logging(service_name: str | None = None) -> None:
     global _configured, _logger_provider
 
-    if _configured: 
+    if _configured:
         return
-    
+
     log_level_name = os.getenv("AUTOPR_LOG_LEVEL", "INFO").upper()
     log_level = getattr(logging, log_level_name, logging.INFO)
 
@@ -35,9 +36,7 @@ def setup_logging(service_name: str | None = None) -> None:
         console_handler._autopr_console = True
         console_handler.setLevel(log_level)
         console_handler.setFormatter(
-            logging.Formatter(
-                "%(asctime)s %(levelname)s %(name)s %(message)s"
-            )
+            logging.Formatter("%(asctime)s %(levelname)s %(name)s %(message)s")
         )
         root_logger.addHandler(console_handler)
 
@@ -81,6 +80,7 @@ def setup_logging(service_name: str | None = None) -> None:
 
     _logger_provider = logger_provider
     _configured = True
+
 
 def flush_logs(timeout_millis: int = 5000) -> None:
     if _logger_provider is not None:

@@ -4,6 +4,7 @@ from infra.storage.artifacts import load_run
 
 router = APIRouter(prefix="/runs", tags=["runs"])
 
+
 @router.get("/{run_id}")
 def get_run(run_id: str) -> dict:
     run = load_run(run_id)

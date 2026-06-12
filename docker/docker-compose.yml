@@ -72,6 +72,7 @@ services:
       OTEL_EXPORTER_OTLP_LOGS_ENDPOINT: otel-collector:4317
       AUTOPR_DATABASE_URL: postgresql+psycopg://postgres:postgres@postgres:5432/postgres
       AUTOPR_DATABASE_ASYNC_URL: postgresql+asyncpg://postgres:postgres@postgres:5432/postgres
+      RAY_DASHBOARD_HOST: 0.0.0.0
 
     ports:
       - "8265:8265"

@@ -1,7 +1,5 @@
-from select import select
 import uuid
 from typing import Any
-from datetime import datetime, timezone
 
 from sqlalchemy import select, update, insert
 
@@ -9,6 +7,7 @@ from infra.storage.engine import get_engine
 from infra.storage.schema import review_requests
 
 _ALLOWED_DECISIONS = {"approved", "disapproved"}
+
 
 def _row_to_dict(row: Any) -> dict[str, Any]:
     """
@@ -41,6 +40,7 @@ def _row_to_dict(row: Any) -> dict[str, Any]:
         "updated_at": row.updated_at or "",
     }
 
+
 def get_review_request(request_id: str) -> dict[str, Any] | None:
     """
     Fetch one review request by identifier.
@@ -53,13 +53,12 @@ def get_review_request(request_id: str) -> dict[str, Any] | None:
     """
 
     engine = get_engine()
-    query = select(review_requests).where(
-        review_requests.c.request_id == request_id
-    )
+    query = select(review_requests).where(review_requests.c.request_id == request_id)
     with engine.begin() as conn:
         res = conn.execute(query).fetchone()
-        
+
     return _row_to_dict(res) if res else None
+
 
 def create_review_request(
     *,
@@ -103,6 +102,7 @@ def create_review_request(
         raise RuntimeError("Failed to create review request")
     return created
 
+
 def attach_review_request_slack_ref(request_id: str, message_ref: str) -> None:
     """
     Store the Slack message reference used to notify reviewers.
@@ -113,14 +113,15 @@ def attach_review_request_slack_ref(request_id: str, message_ref: str) -> None:
     """
 
     engine = get_engine()
-    query = update(review_requests).where(
-        review_requests.c.request_id == request_id
-    ).values(
-        slack_message_ref=message_ref.strip()
+    query = (
+        update(review_requests)
+        .where(review_requests.c.request_id == request_id)
+        .values(slack_message_ref=message_ref.strip())
     )
 
     with engine.begin() as conn:
         conn.execute(query)
+
 
 def record_review_decision(
     *,
@@ -164,14 +165,16 @@ def record_review_decision(
         return current
 
     engine = get_engine()
-    query = update(review_requests).where(
-        review_requests.c.request_id == request_id
-    ).values(
-        decision=normalized,
-        decision_source=source.strip(),
-        decision_by=decision_by.strip(),
-        reason=reason.strip(),
-        status="decided"
+    query = (
+        update(review_requests)
+        .where(review_requests.c.request_id == request_id)
+        .values(
+            decision=normalized,
+            decision_source=source.strip(),
+            decision_by=decision_by.strip(),
+            reason=reason.strip(),
+            status="decided",
+        )
     )
 
     with engine.begin() as conn:
@@ -181,6 +184,7 @@ def record_review_decision(
     if updated is None:
         raise RuntimeError(f"Failed to update review request: {request_id}")
     return updated
+
 
 def mark_review_request_applied(
     *,
@@ -199,11 +203,10 @@ def mark_review_request_applied(
     """
 
     engine = get_engine()
-    query = update(review_requests).where(
-        review_requests.c.request_id == request_id
-    ).values(
-        status="applied",
-        execution_run_id=execution_run_id.strip()
+    query = (
+        update(review_requests)
+        .where(review_requests.c.request_id == request_id)
+        .values(status="applied", execution_run_id=execution_run_id.strip())
     )
 
     with engine.begin() as conn:

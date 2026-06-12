@@ -6,6 +6,7 @@ from core.orchestrator.steps.base import PipelineStep, StepRuntime, is_success_s
 from infra.ray.actors import MergeWorker
 from observability.tracing import traced, pipeline_step_attrs
 
+
 class MergeStep(PipelineStep):
     stage = PipelineStage.MERGE
 
@@ -16,7 +17,11 @@ class MergeStep(PipelineStep):
         if not isinstance(payload.get("pull_request_number"), int):
             payload["pull_request_number"] = run.pull_request_number
         payload["execute_remote_actions"] = bool(context.get("execute_remote_actions", False))
-        payload["metadata"] = context.get("metadata") if isinstance(context.get("metadata"), dict) else dict(run.metadata)
+        payload["metadata"] = (
+            context.get("metadata")
+            if isinstance(context.get("metadata"), dict)
+            else dict(run.metadata)
+        )
         worker_result = runtime.run_worker(
             self.stage,
             MergeWorker.remote(),

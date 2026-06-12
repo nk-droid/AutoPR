@@ -11,9 +11,18 @@ from infra.storage.models import StoredRunEvent
 
 import infra.storage.engine as storage_engine
 
+
 def test_storage_models_hold_payloads() -> None:
-    artifact = StoredArtifact(run_id="r1", key="k1", value={"x": 1}, updated_at_utc="2026-01-01T00:00:00Z")
-    event = StoredRunEvent(id="e1", run_id="r1", event_type="state_transition", payload={"to": "TRIAGED"}, created_at_utc="2026-01-01T00:00:00Z")
+    artifact = StoredArtifact(
+        run_id="r1", key="k1", value={"x": 1}, updated_at_utc="2026-01-01T00:00:00Z"
+    )
+    event = StoredRunEvent(
+        id="e1",
+        run_id="r1",
+        event_type="state_transition",
+        payload={"to": "TRIAGED"},
+        created_at_utc="2026-01-01T00:00:00Z",
+    )
     run = StoredRun(
         run_id="r1",
         state=RunState.TRIAGED.value,
@@ -26,6 +35,7 @@ def test_storage_models_hold_payloads() -> None:
     )
     assert run.artifacts[0].value["x"] == 1
     assert run.events[0].payload["to"] == "TRIAGED"
+
 
 def test_storage_engine_caches_and_closes(monkeypatch) -> None:
     @dataclass
@@ -57,6 +67,7 @@ def test_storage_engine_caches_and_closes(monkeypatch) -> None:
     monkeypatch.setattr(storage_engine, "create_engine", lambda *args, **kwargs: sync)
     monkeypatch.setattr(storage_engine, "create_async_engine", lambda *args, **kwargs: async_engine)
     import asyncio
+
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
     storage_engine._sync_engine = None
@@ -72,6 +83,7 @@ def test_storage_engine_caches_and_closes(monkeypatch) -> None:
     assert async_engine.disposed is True
     assert storage_engine._sync_engine is None
     assert storage_engine._async_engine is None
+
 
 def _load_review_requests_module():
     fake_schema = types.ModuleType("infra.storage.schema")
@@ -125,6 +137,7 @@ def _load_review_requests_module():
     module = importlib.import_module("infra.storage.review_requests")
     return module, fake_engine
 
+
 class _FakeQuery:
     def __init__(self):
         self.where_args = []
@@ -137,6 +150,7 @@ class _FakeQuery:
     def values(self, **kwargs):
         self.values_kwargs = kwargs
         return self
+
 
 def test_review_requests_record_decision_and_mark_applied(monkeypatch) -> None:
     review_requests, fake_engine = _load_review_requests_module()
@@ -169,12 +183,19 @@ def test_review_requests_record_decision_and_mark_applied(monkeypatch) -> None:
     assert updates[0].values_kwargs["decision_by"] == "alice"
     assert len(fake_engine.executed) == 1
 
-    monkeypatch.setattr(review_requests, "get_review_request", lambda request_id: {"request_id": request_id, "status": "applied", "decision": "approved"})
-    applied = review_requests.mark_review_request_applied(request_id="rq-1", execution_run_id="run-2")
+    monkeypatch.setattr(
+        review_requests,
+        "get_review_request",
+        lambda request_id: {"request_id": request_id, "status": "applied", "decision": "approved"},
+    )
+    applied = review_requests.mark_review_request_applied(
+        request_id="rq-1", execution_run_id="run-2"
+    )
     assert applied["status"] == "applied"
     assert updates[1].values_kwargs["status"] == "applied"
     assert updates[1].values_kwargs["execution_run_id"] == "run-2"
     assert len(fake_engine.executed) == 2
+
 
 def test_review_requests_row_to_dict_defaults() -> None:
     review_requests, _fake_engine = _load_review_requests_module()

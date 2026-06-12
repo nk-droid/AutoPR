@@ -15,9 +15,10 @@ from infra.repo_worker.workspace import read_target_files
 
 from observability.tracing import inject_trace_context, pipeline_step_attrs, traced
 
+
 def _dependency_levels(steps: list[PlanStepModel]) -> list[list[PlanStepModel]] | None:
     """
-    Returns a list of levels of steps, where each level can be executed in parallel and 
+    Returns a list of levels of steps, where each level can be executed in parallel and
     all dependencies of a level are in previous levels. If there is a cycle in the dependencies,
     returns None.
 
@@ -64,6 +65,7 @@ def _dependency_levels(steps: list[PlanStepModel]) -> list[list[PlanStepModel]] 
 
     return levels
 
+
 def _aggregate_coding_step(steps: list[PlanStepModel]) -> PlanStepModel:
     """
     Creates a single aggregated coding step that combines the objectives, files, and tests of the given steps.
@@ -74,7 +76,7 @@ def _aggregate_coding_step(steps: list[PlanStepModel]) -> PlanStepModel:
     Returns:
         A single PlanStepModel that represents the aggregate of the given steps.
     """
-    
+
     objectives: list[str] = []
     files: list[str] = []
     tests: list[str] = []
@@ -91,6 +93,7 @@ def _aggregate_coding_step(steps: list[PlanStepModel]) -> PlanStepModel:
         files=list(dict.fromkeys(files)),
         tests=list(dict.fromkeys(tests)),
     )
+
 
 class CodeStep(PipelineStep):
     stage = PipelineStage.CODE
@@ -238,7 +241,9 @@ class CodeStep(PipelineStep):
             status=StageStatus.OK,
             outputs={
                 "coding_order": coding_order,
-                "coding_step": _aggregate_coding_step([s for level in levels for s in level]).model_dump(),
+                "coding_step": _aggregate_coding_step(
+                    [s for level in levels for s in level]
+                ).model_dump(),
                 "coding_output": aggregate_output,
             },
         )

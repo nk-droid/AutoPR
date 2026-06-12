@@ -10,14 +10,17 @@ from infra.github.client import GitHubAPIError, GitHubClient
 from infra.github.issues import get_issues, get_and_pick_issue, get_issue_details
 from infra.repo_worker.git_utils import GitService
 
+
 def _normalize_text(value: str) -> str:
     return value.strip()
+
 
 def _validate_repo_name(repo: str) -> str:
     normalized = _normalize_text(repo)
     if normalized.count("/") != 1 or normalized.startswith("/") or normalized.endswith("/"):
         raise ValueError("Invalid --repo value. Expected owner/repo format.")
     return normalized
+
 
 def _normalize_pr_head(head: str, *, head_owner: str = "") -> str:
     normalized_head = _normalize_text(head)
@@ -30,6 +33,7 @@ def _normalize_pr_head(head: str, *, head_owner: str = "") -> str:
         return f"{owner}:{normalized_head}"
     return normalized_head
 
+
 def _format_pr_create_hints(exc: GitHubAPIError) -> str:
     if exc.status_code != 422:
         return ""
@@ -41,9 +45,12 @@ def _format_pr_create_hints(exc: GitHubAPIError) -> str:
     ]
     return "\nHints:\n- " + "\n- ".join(hints)
 
+
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="AutoPR Git/GitHub operations scaffold")
-    parser.add_argument("--repo-path", default=".", help="Local repository path (default: current dir)")
+    parser.add_argument(
+        "--repo-path", default=".", help="Local repository path (default: current dir)"
+    )
     subparsers = parser.add_subparsers(dest="command")
     status = subparsers.add_parser("status", help="Show git status")
     status.add_argument("--short", action="store_true", help="Use short status output")
@@ -53,7 +60,9 @@ def _build_parser() -> argparse.ArgumentParser:
     branch_delete = subparsers.add_parser("branch-delete", help="Delete a branch")
     branch_delete.add_argument("branch", help="Branch to delete")
     branch_delete.add_argument("--force", action="store_true", help="Force delete local branch")
-    branch_delete.add_argument("--remote", default=None, help="Remote name for optional remote delete")
+    branch_delete.add_argument(
+        "--remote", default=None, help="Remote name for optional remote delete"
+    )
     branch_delete.add_argument(
         "--delete-remote",
         action="store_true",
@@ -141,34 +150,45 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Issue pick strategy",
     )
     issue_pick.add_argument("--token", default=None, help="GitHub token override")
-    issue_details = subparsers.add_parser("issue-details", help="Get issue details by number or URL")
+    issue_details = subparsers.add_parser(
+        "issue-details", help="Get issue details by number or URL"
+    )
     issue_details.add_argument(
         "--issue",
         required=True,
         help="Issue reference (e.g. 123, #123, or full GitHub issue URL)",
     )
-    issue_details.add_argument("--repo", default=None, help="owner/repo (required for numeric issue)")
-    issue_details.add_argument("--comments-limit", type=int, default=20, help="Number of comments to fetch")
+    issue_details.add_argument(
+        "--repo", default=None, help="owner/repo (required for numeric issue)"
+    )
+    issue_details.add_argument(
+        "--comments-limit", type=int, default=20, help="Number of comments to fetch"
+    )
     issue_details.add_argument("--comments-page", type=int, default=1, help="Comments page number")
     issue_details.add_argument("--token", default=None, help="GitHub token override")
     return parser
 
+
 def _git(args: argparse.Namespace) -> GitService:
     return GitService(Path(args.repo_path))
+
 
 def _run_status(args: argparse.Namespace) -> int:
     print(_git(args).status(short=args.short))
     return 0
+
 
 def _run_checkout(args: argparse.Namespace) -> int:
     branch = _git(args).checkout_branch(args.branch, create=args.create)
     print(f"Checked out {branch}")
     return 0
 
+
 def _run_pull(args: argparse.Namespace) -> int:
     output = _git(args).pull(remote=args.remote, branch=args.branch, rebase=args.rebase)
     print(output)
     return 0
+
 
 def _run_branch_delete(args: argparse.Namespace) -> int:
     output = _git(args).delete_branch(
@@ -180,6 +200,7 @@ def _run_branch_delete(args: argparse.Namespace) -> int:
     print(output)
     return 0
 
+
 def _run_push(args: argparse.Namespace) -> int:
     output = _git(args).push(
         remote=args.remote,
@@ -188,6 +209,7 @@ def _run_push(args: argparse.Namespace) -> int:
     )
     print(output)
     return 0
+
 
 def _run_commit(args: argparse.Namespace) -> int:
     git = _git(args)
@@ -198,6 +220,7 @@ def _run_commit(args: argparse.Namespace) -> int:
     output = git.commit(args.message, all_files=args.all_files)
     print(output)
     return 0
+
 
 def _run_pr_create(args: argparse.Namespace) -> int:
     repo = _validate_repo_name(args.repo)
@@ -229,6 +252,7 @@ def _run_pr_create(args: argparse.Namespace) -> int:
     print(f"Created PR #{number} {url}".strip())
     return 0
 
+
 def _run_issues_list(args: argparse.Namespace) -> int:
     issues = get_issues(
         args.repo,
@@ -251,6 +275,7 @@ def _run_issues_list(args: argparse.Namespace) -> int:
         print(f"#{number} [{state}] {title} {url}".strip())
     return 0
 
+
 def _run_issue_pick(args: argparse.Namespace) -> int:
     issue = get_and_pick_issue(
         args.repo,
@@ -267,6 +292,7 @@ def _run_issue_pick(args: argparse.Namespace) -> int:
     url = issue.get("html_url", "")
     print(f"Picked issue #{number} [{state}] {title} {url}".strip())
     return 0
+
 
 def _run_issue_details(args: argparse.Namespace) -> int:
     issue = get_issue_details(
@@ -316,6 +342,7 @@ def _run_issue_details(args: argparse.Namespace) -> int:
             print("")
     return 0
 
+
 def main() -> int:
     parser = _build_parser()
     args = parser.parse_args()
@@ -339,6 +366,7 @@ def main() -> int:
     except Exception as exc:
         parser.exit(status=1, message=f"Error: {exc}\n")
         return 1
+
 
 if __name__ == "__main__":
     raise SystemExit(main())

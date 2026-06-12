@@ -8,6 +8,7 @@ from core.orchestrator.models import StageStatus
 
 logger = logging.getLogger(__name__)
 
+
 class PublishAgent:
     def __init__(self):
         self.graph = build_publish_graph(nodes)
@@ -35,6 +36,6 @@ class PublishAgent:
                 "final_output": {},
             }
         )
-        
+
         log_agent_decision(logger, "publish", result["status"])
         return result["status"], result["final_output"]

@@ -3,6 +3,7 @@ import re
 from infra.qa.models import TestResult
 from infra.qa.sandbox import Sandbox
 
+
 class TestRunner:
     def __init__(self, sandbox: Sandbox):
         self.sandbox = sandbox
@@ -24,7 +25,7 @@ class TestRunner:
             passed = int(passed_match.group(1))
         if failed_match:
             failed = int(failed_match.group(1))
-            
+
         return TestResult(
             success=result.success,
             total=passed + failed,

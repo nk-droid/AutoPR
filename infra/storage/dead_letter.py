@@ -6,6 +6,7 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from infra.storage.engine import get_engine
 from infra.storage.schema import dead_letter_jobs
 
+
 def record_dead_letter_job(
     *,
     message_id: str,

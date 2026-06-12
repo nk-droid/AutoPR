@@ -3,6 +3,7 @@ import json
 from infra.qa.lint_runner import LintRunner
 from infra.qa.models import CommandResult
 
+
 class FakeSandbox:
     def __init__(self, result: CommandResult) -> None:
         self.python = "python3"
@@ -12,6 +13,7 @@ class FakeSandbox:
     def run(self, command: list[str], timeout: int = 300) -> CommandResult:
         self.calls.append((command, timeout))
         return self.result
+
 
 def test_lint_runner_returns_success_for_empty_output() -> None:
     sandbox = FakeSandbox(
@@ -31,6 +33,7 @@ def test_lint_runner_returns_success_for_empty_output() -> None:
         "json",
     ]
     assert sandbox.calls[0][1] == 15
+
 
 def test_lint_runner_parses_issues_from_json() -> None:
     payload = [

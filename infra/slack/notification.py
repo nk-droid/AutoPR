@@ -9,15 +9,18 @@ from typing import Any
 from core.orchestrator.models import RunModel, StageResult
 
 from dotenv import load_dotenv
+
 load_dotenv()
 
 _ALLOWED_DECISIONS = {"approved", "disapproved"}
+
 
 def _env_flag(name: str, default: bool) -> bool:
     raw = os.getenv(name)
     if raw is None:
         return default
     return str(raw).strip().lower() in {"1", "true", "yes", "y", "on"}
+
 
 def _b64url_encode(value: str) -> str:
     return base64.urlsafe_b64encode(value.encode("utf-8")).decode("utf-8").rstrip("=")
@@ -27,11 +30,13 @@ def _b64url_decode(value: str) -> str:
     padding = "=" * ((4 - (len(value) % 4)) % 4)
     return base64.urlsafe_b64decode((value + padding).encode("utf-8")).decode("utf-8")
 
+
 def _token_secret() -> str:
     secret = os.getenv("REVIEW_ACTION_TOKEN_SECRET")
     if not secret:
         raise ValueError("REVIEW_ACTION_TOKEN_SECRET is not configured")
     return secret
+
 
 def build_review_action_token(request_id: str, decision: str) -> str:
     normalized = decision.strip().lower()
@@ -42,8 +47,11 @@ def build_review_action_token(request_id: str, decision: str) -> str:
 
     expires_at = int(time.time()) + ttl_sec
     payload = f"{request_id}|{normalized}|{expires_at}"
-    digest = hmac.new(_token_secret().encode("utf-8"), payload.encode("utf-8"), hashlib.sha256).hexdigest()
+    digest = hmac.new(
+        _token_secret().encode("utf-8"), payload.encode("utf-8"), hashlib.sha256
+    ).hexdigest()
     return f"{_b64url_encode(payload)}.{digest}"
+
 
 def decode_review_action_token(token: str) -> tuple[str, str]:
     encoded, sep, signature = token.partition(".")
@@ -51,7 +59,9 @@ def decode_review_action_token(token: str) -> tuple[str, str]:
         raise ValueError("Invalid token format")
 
     payload = _b64url_decode(encoded)
-    expected = hmac.new(_token_secret().encode("utf-8"), payload.encode("utf-8"), hashlib.sha256).hexdigest()
+    expected = hmac.new(
+        _token_secret().encode("utf-8"), payload.encode("utf-8"), hashlib.sha256
+    ).hexdigest()
     if not hmac.compare_digest(signature, expected):
         raise ValueError("Invalid token signature")
 
@@ -89,6 +99,7 @@ def _extract_reason(result: StageResult) -> str:
 
     return "No reason provided."
 
+
 def _format_blocking_findings(value: Any, *, limit: int = 5) -> str:
     if not isinstance(value, list):
         return ""
@@ -105,35 +116,22 @@ def _format_blocking_findings(value: Any, *, limit: int = 5) -> str:
         lines.append(f"- {prefix}{summary.strip()}")
     return "\n".join(lines)
 
+
 def send_needs_review_notification(
-    run: RunModel,
-    result: StageResult,
-    review_result: dict[str, Any]
+    run: RunModel, result: StageResult, review_result: dict[str, Any]
 ) -> dict[str, Any]:
-    
+
     if not _env_flag("SLACK_NOTIFY_NEEDS_REVIEW", True):
-        return {
-            "sent": False,
-            "message_ref": "",
-            "reason": "disabled"
-        }
-    
+        return {"sent": False, "message_ref": "", "reason": "disabled"}
+
     webhook_url = os.getenv("SLACK_WEBHOOK_URL")
     if not webhook_url:
-        return {
-            "sent": False,
-            "message_ref": "",
-            "reason": "missing_webhook"
-        }
-    
+        return {"sent": False, "message_ref": "", "reason": "missing_webhook"}
+
     request_id = review_result.get("request_id", "")
     if not request_id:
-        return {
-            "sent": False,
-            "message_ref": "",
-            "reason": "missing_request_id"
-        }
-    
+        return {"sent": False, "message_ref": "", "reason": "missing_request_id"}
+
     run_id = str(run.run_id)
     stage = str(result.stage)
     repository = run.repository
@@ -142,7 +140,7 @@ def send_needs_review_notification(
     merge_risk = notes.get("merge_risk")
     confidence = notes.get("confidence")
     findings_text = _format_blocking_findings(notes.get("blocking_findings"))
-    
+
     approve_url = _build_action_url(request_id, "approved")
     disapprove_url = _build_action_url(request_id, "disapproved")
     run_url = f"{_action_base_url()}/runs/{run_id}"
@@ -160,7 +158,9 @@ def send_needs_review_notification(
         {"type": "section", "text": {"type": "mrkdwn", "text": f"*Reason*\n{reason}"}},
     ]
     if isinstance(merge_risk, str) and merge_risk.strip():
-        confidence_text = confidence if isinstance(confidence, str) and confidence.strip() else "unknown"
+        confidence_text = (
+            confidence if isinstance(confidence, str) and confidence.strip() else "unknown"
+        )
         blocks.append(
             {
                 "type": "section",
@@ -171,7 +171,12 @@ def send_needs_review_notification(
             }
         )
     if findings_text:
-        blocks.append({"type": "section", "text": {"type": "mrkdwn", "text": f"*Blocking findings*\n{findings_text}"}})
+        blocks.append(
+            {
+                "type": "section",
+                "text": {"type": "mrkdwn", "text": f"*Blocking findings*\n{findings_text}"},
+            }
+        )
     blocks.append(
         {
             "type": "actions",
@@ -204,23 +209,20 @@ def send_needs_review_notification(
 
     timeout_sec = int(os.getenv("SLACK_TIMEOUT_SEC", 5))
 
-    response = requests.post(
-        webhook_url,
-        json=payload,
-        timeout=timeout_sec
-    )
+    response = requests.post(webhook_url, json=payload, timeout=timeout_sec)
 
     if response.status_code >= 400:
         return {
             "sent": False,
             "message_ref": "",
             "reason": f"slack_http_{response.status_code}",
-            "response_text": response.text[:500]
+            "response_text": response.text[:500],
         }
-    
+
     # Incoming webhook does not return Slack message; store a synthetic reference.
     synthetic_ref = f"{run_id}:{stage}:{int(time.time())}"
     return {"sent": True, "message_ref": synthetic_ref, "reason": "ok"}
+
 
 def send_review_decision_notification(
     *,
@@ -259,10 +261,14 @@ def send_review_decision_notification(
     ]
 
     if reviewer_text:
-        blocks.append({"type": "section", "text": {"type": "mrkdwn", "text": f"*Reviewer*\n{reviewer_text}"}})
+        blocks.append(
+            {"type": "section", "text": {"type": "mrkdwn", "text": f"*Reviewer*\n{reviewer_text}"}}
+        )
 
     if reason_text:
-        blocks.append({"type": "section", "text": {"type": "mrkdwn", "text": f"*Reason*\n{reason_text}"}})
+        blocks.append(
+            {"type": "section", "text": {"type": "mrkdwn", "text": f"*Reason*\n{reason_text}"}}
+        )
 
     payload = {
         "text": f"AutoPR decision: {title} ({request_id})",
@@ -284,6 +290,7 @@ def send_review_decision_notification(
         "reason": "ok",
     }
 
+
 def send_dead_letter_notification(
     *,
     message_id: str,
@@ -300,7 +307,11 @@ def send_dead_letter_notification(
     if not webhook_url:
         return {"sent": False, "reason": "missing_webhook"}
 
-    error_text = last_error.strip() if isinstance(last_error, str) and last_error.strip() else "No error captured."
+    error_text = (
+        last_error.strip()
+        if isinstance(last_error, str) and last_error.strip()
+        else "No error captured."
+    )
     blocks: list[dict[str, Any]] = [
         {"type": "header", "text": {"type": "plain_text", "text": "AutoPR job dead-lettered"}},
         {
@@ -313,7 +324,10 @@ def send_dead_letter_notification(
                 {"type": "mrkdwn", "text": f"*Message ID*\n`{message_id}`"},
             ],
         },
-        {"type": "section", "text": {"type": "mrkdwn", "text": f"*Last error*\n```{error_text[:1500]}```"}},
+        {
+            "type": "section",
+            "text": {"type": "mrkdwn", "text": f"*Last error*\n```{error_text[:1500]}```"},
+        },
     ]
 
     payload = {
@@ -336,6 +350,7 @@ def send_dead_letter_notification(
 
     return {"sent": True, "reason": "ok"}
 
+
 if __name__ == "__main__":
     import uuid
 
@@ -350,8 +365,6 @@ if __name__ == "__main__":
         stage="test_stage",
     )
 
-    review_result = {
-        "request_id": "test_id"
-    }
+    review_result = {"request_id": "test_id"}
 
     send_needs_review_notification(run, result, review_result)

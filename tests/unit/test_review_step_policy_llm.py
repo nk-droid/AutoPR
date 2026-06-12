@@ -47,7 +47,9 @@ def test_review_step_hard_policy_blocks_and_comments(monkeypatch) -> None:
         review_steps,
         "evaluate_review_policy",
         lambda _context: PolicyEvaluation(
-            decision=MergeDecision(allowed=False, reason="Policy blocked", blocking_reasons=["risk_high"]),
+            decision=MergeDecision(
+                allowed=False, reason="Policy blocked", blocking_reasons=["risk_high"]
+            ),
             public_findings=[
                 PolicyFinding(
                     reason="This change needs human review.",
@@ -107,7 +109,9 @@ def test_review_step_llm_low_risk_can_merge() -> None:
     result = StageResult(
         stage="review",
         status=StageStatus.OK,
-        outputs={"llm_review": {"merge_risk": "low", "confidence": "high", "blocking_findings": []}},
+        outputs={
+            "llm_review": {"merge_risk": "low", "confidence": "high", "blocking_findings": []}
+        },
     )
     context = {"policy_decision": {"allowed": True, "reason": "ok", "blocking_reasons": []}}
 

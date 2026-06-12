@@ -9,6 +9,7 @@ from infra.repo_worker.workspace import build_repo_map, clone_repo
 
 from observability.tracing import pipeline_step_attrs, traced
 
+
 class PrepareStep(PipelineStep):
     """Clone the target repo once and seed repo_path and repo_map.
 

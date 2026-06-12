@@ -17,6 +17,7 @@ _ISOLATED_MODULES = (
     "infra.github.webhook_handler",
 )
 
+
 @pytest.fixture(autouse=True)
 def _restore_isolated_modules():
     saved = {name: sys.modules.get(name) for name in _ISOLATED_MODULES}
@@ -29,10 +30,12 @@ def _restore_isolated_modules():
             else:
                 sys.modules[name] = module
 
+
 @pytest.fixture(autouse=True)
 def _disable_qa_workspace_retention(monkeypatch):
     # Tests must never retain QA sandboxes, regardless of a developer .env.
     monkeypatch.setenv("AUTOPR_KEEP_QA_WORKSPACE", "false")
+
 
 def pytest_collection_modifyitems(items: list[pytest.Item]) -> None:
     for item in items:

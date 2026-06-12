@@ -9,6 +9,7 @@ from core.contracts.plan import PlanStep
 from core.contracts.triage import TriageResult
 from core.orchestrator.models import StageStatus
 
+
 class PlanState(TypedDict):
     triage_result: TriageResult
     repo_map: str
@@ -19,11 +20,13 @@ class PlanState(TypedDict):
     status: StageStatus
     final_output: dict[str, Any]
 
+
 def is_output_parse_error(exc: Exception) -> bool:
     if isinstance(exc, (OutputParserException, ValidationError, json.JSONDecodeError)):
         return True
     msg = str(exc).lower()
     return "parse" in msg and "json" in msg
+
 
 PARSER_RETRY_POLICY = RetryPolicy(
     initial_interval=0.5,
@@ -33,6 +36,7 @@ PARSER_RETRY_POLICY = RetryPolicy(
     jitter=True,
     retry_on=is_output_parse_error,
 )
+
 
 # Draft plan -> Map dependencies -> Detect ambiguity -> Finalize
 def build_plan_graph(nodes) -> StateGraph[PlanState]:
@@ -48,5 +52,5 @@ def build_plan_graph(nodes) -> StateGraph[PlanState]:
     graph.add_edge("map_dependencies", "detect_ambiguity")
     graph.add_edge("detect_ambiguity", "finalize")
     graph.add_edge("finalize", END)
-    
+
     return graph.compile()

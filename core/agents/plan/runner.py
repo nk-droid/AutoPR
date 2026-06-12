@@ -8,6 +8,7 @@ from core.contracts.triage import TriageResult
 
 logger = logging.getLogger(__name__)
 
+
 class PlanAgent:
     def __init__(self):
         self.graph = build_plan_graph(nodes)
@@ -25,6 +26,6 @@ class PlanAgent:
                 "final_output": {},
             }
         )
-        
+
         log_agent_decision(logger, "plan", result["status"])
         return result["status"], result["final_output"]

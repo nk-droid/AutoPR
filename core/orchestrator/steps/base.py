@@ -1,5 +1,5 @@
 import ray
-from abc import ABC, abstractmethod
+from abc import ABC
 from typing import Dict, List, Tuple, Any, Protocol
 
 from core.contracts.enums import PipelineStage
@@ -7,13 +7,10 @@ from core.orchestrator.models import RunModel, StageResult, StageStatus
 
 _SUCCESS_STATUSES = {StageStatus.OK, StageStatus.ACCEPTED}
 
+
 class StepRuntime(Protocol):
     def transition_to(
-        self,
-        next_state: str,
-        *,
-        reason: str = "",
-        metadata: Dict[str, Any] | None = None
+        self, next_state: str, *, reason: str = "", metadata: Dict[str, Any] | None = None
     ) -> str:
         """
         Request a persisted workflow transition from a pipeline step.
@@ -32,12 +29,7 @@ class StepRuntime(Protocol):
         self.run.transition_history = list(self.state_machine.history)
         return state
 
-    def run_worker(
-        self,
-        stage: PipelineStage,
-        worker: Any,
-        *args: Any
-    ) -> StageResult:
+    def run_worker(self, stage: PipelineStage, worker: Any, *args: Any) -> StageResult:
         """
         Execute a stage worker through the runtime abstraction.
 
@@ -53,16 +45,14 @@ class StepRuntime(Protocol):
         worker_result_ref = worker.run.remote(*args)
         stage_status, worker_result = ray.get(worker_result_ref)
 
-        return StageResult(
-            stage = stage,
-            status = stage_status,
-            outputs = worker_result
-        )
+        return StageResult(stage=stage, status=stage_status, outputs=worker_result)
+
 
 def is_success_status(status: StageStatus) -> bool:
     """Return whether a stage status should advance the pipeline."""
 
     return status in _SUCCESS_STATUSES
+
 
 class PipelineStep(ABC):
     """Base contract implemented by each ordered pipeline stage."""
@@ -85,12 +75,7 @@ class PipelineStep(ABC):
         # Hook for pre-step transitions or setup.
         return []
 
-    def execute(
-        self,
-        context: Dict[str, Any],
-        run: RunModel,
-        runtime: StepRuntime
-    ) -> StageResult:
+    def execute(self, context: Dict[str, Any], run: RunModel, runtime: StepRuntime) -> StageResult:
         """
         Execute the stage's main business action.
 
@@ -105,7 +90,9 @@ class PipelineStep(ABC):
 
         raise NotImplementedError
 
-    def after(self, result: StageResult, context: Dict[str, Any], run: RunModel) -> List[Tuple[str, str]]:
+    def after(
+        self, result: StageResult, context: Dict[str, Any], run: RunModel
+    ) -> List[Tuple[str, str]]:
         """
         Provide post-execution transitions derived from the stage result.
 

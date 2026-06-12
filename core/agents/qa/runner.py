@@ -10,11 +10,14 @@ from core.orchestrator.models import StageStatus
 
 logger = logging.getLogger(__name__)
 
+
 class QAAgent:
     def __init__(self):
         self.graph = build_qa_graph(nodes)
 
-    def run(self, coding_output: CodeOutput, coding_step: PlanStep, tool_results: list[ToolRunResult]):
+    def run(
+        self, coding_output: CodeOutput, coding_step: PlanStep, tool_results: list[ToolRunResult]
+    ):
         result = self.graph.invoke(
             {
                 "coding_output": coding_output,
@@ -27,6 +30,6 @@ class QAAgent:
                 "final_output": {},
             }
         )
-        
+
         log_agent_decision(logger, "qa", result["status"])
         return result["status"], result["final_output"]

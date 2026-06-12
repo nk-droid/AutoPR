@@ -13,6 +13,7 @@ from infra.ray.actors import CoverageWorker, LintWorker, QAWorker, SecurityWorke
 
 from observability.tracing import inject_trace_context, pipeline_step_attrs, traced
 
+
 class QAStep(PipelineStep):
     stage = PipelineStage.QA
     success_state = RunState.QA_RUNNING.value
@@ -70,9 +71,7 @@ class QAStep(PipelineStep):
                 return ray.get(ref)
 
             return ToolRunResult(
-                name=name,
-                status=CheckStatus.FAIL,
-                payload={"reason": "timeout_or_cancelled"}
+                name=name, status=CheckStatus.FAIL, payload={"reason": "timeout_or_cancelled"}
             )
 
         lint_result = _get_result_from_ref("lint", pending, lint_ref)

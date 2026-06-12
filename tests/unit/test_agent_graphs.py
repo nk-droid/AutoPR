@@ -23,6 +23,7 @@ from core.contracts.triage import TaskSpec
 from core.contracts.triage import TriageResult
 from core.orchestrator.models import StageStatus
 
+
 def test_plan_parse_error_detection() -> None:
     try:
         PlanStep.model_validate({"title": 1})
@@ -35,6 +36,7 @@ def test_plan_parse_error_detection() -> None:
     assert is_output_parse_error(validation_error) is True
     assert is_output_parse_error(RuntimeError("failed to parse json output")) is True
     assert is_output_parse_error(RuntimeError("network timeout")) is False
+
 
 def test_triage_graph_executes_nodes_in_order() -> None:
     calls: list[str] = []
@@ -74,6 +76,7 @@ def test_triage_graph_executes_nodes_in_order() -> None:
     assert calls == ["extract_task", "assess_risk", "detect_ambiguity", "finalize"]
     assert result["final_output"]["task_spec"]["problem"] == "p"
 
+
 def test_plan_graph_executes_nodes_in_order() -> None:
     calls: list[str] = []
     step = PlanStep(
@@ -100,13 +103,20 @@ def test_plan_graph_executes_nodes_in_order() -> None:
 
         def finalize(self, state):
             calls.append("finalize")
-            return {"final_output": {"strategy": state["strategy"], "steps": [step.model_dump(mode="json")]}}
+            return {
+                "final_output": {
+                    "strategy": state["strategy"],
+                    "steps": [step.model_dump(mode="json")],
+                }
+            }
 
     app = build_plan_graph(Nodes())
     result = app.invoke(
         {
             "triage_result": TriageResult(
-                task_spec=TaskSpec(problem="p", acceptance_criteria=["a"], constraints=[], out_of_scope=[]),
+                task_spec=TaskSpec(
+                    problem="p", acceptance_criteria=["a"], constraints=[], out_of_scope=[]
+                ),
                 risk=Risk(level=RiskLevel.LOW, reasons=["r"]),
                 ambiguity=AmbiguityResult(status=StageStatus.OK, questions=[]),
                 questions=[],
@@ -122,6 +132,7 @@ def test_plan_graph_executes_nodes_in_order() -> None:
     assert calls == ["draft_plan", "map_dependencies", "detect_ambiguity", "finalize"]
     assert result["final_output"]["strategy"] == "strat"
 
+
 def test_code_qa_pr_review_graphs_compile_and_invoke() -> None:
     class CodeNodes:
         def understand_task(self, state):
@@ -131,13 +142,21 @@ def test_code_qa_pr_review_graphs_compile_and_invoke() -> None:
             return {"target_files": ["a.py"]}
 
         def generate_patch(self, state):
-            return {"files": {"a.py": "print('x')"}, "files_changed": ["a.py"], "status": StageStatus.OK}
+            return {
+                "files": {"a.py": "print('x')"},
+                "files_changed": ["a.py"],
+                "status": StageStatus.OK,
+            }
 
         def validate_patch(self, state):
             return state
 
         def finalize(self, state):
-            return {"final_output": CodeOutput(files_map={"a.py": "print('x')"}, tests_map={}).model_dump(mode="json")}
+            return {
+                "final_output": CodeOutput(
+                    files_map={"a.py": "print('x')"}, tests_map={}
+                ).model_dump(mode="json")
+            }
 
     code_app = build_code_graph(CodeNodes())
     code_result = code_app.invoke(
@@ -184,7 +203,11 @@ def test_code_qa_pr_review_graphs_compile_and_invoke() -> None:
             return {"status": StageStatus.OK}
 
         def open_pr(self, state):
-            return {"status": StageStatus.OK, "pull_request_number": 12, "pull_request_url": "https://x"}
+            return {
+                "status": StageStatus.OK,
+                "pull_request_number": 12,
+                "pull_request_url": "https://x",
+            }
 
         def finalize(self, state):
             return {"final_output": {"pull_request_number": 12}}
@@ -213,7 +236,13 @@ def test_code_qa_pr_review_graphs_compile_and_invoke() -> None:
 
     class ReviewNodes:
         def evaluate_review(self, state):
-            return {"status": StageStatus.OK, "summary": "ok", "checks": [], "required_actions": [], "notes": {}}
+            return {
+                "status": StageStatus.OK,
+                "summary": "ok",
+                "checks": [],
+                "required_actions": [],
+                "notes": {},
+            }
 
         def llm_merge_risk_review(self, state):
             return state

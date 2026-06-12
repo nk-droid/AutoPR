@@ -7,9 +7,6 @@ from typing import Callable
 
 from core.contracts.enums import CheckStatus
 from core.contracts.run_context import QAJobPayload, ToolRunResult
-
-logger = logging.getLogger(__name__)
-
 from infra.qa.coverage_runner import CoverageRunner
 from infra.qa.lint_runner import LintRunner
 from infra.qa.sandbox import Sandbox
@@ -17,11 +14,15 @@ from infra.qa.security_runner import SecurityRunner
 from infra.qa.test_runner import TestRunner
 from infra.repo_worker.workspace import get_work_base, keep_qa_workspace
 
+logger = logging.getLogger(__name__)
+
+
 def _collect_generated(qa_payload: QAJobPayload) -> dict[str, str]:
     return {
         **qa_payload.coding_output.files_map,
         **qa_payload.coding_output.tests_map,
     }
+
 
 def _safe_rel(path: str) -> Path:
     p = Path(path.strip())
@@ -30,6 +31,7 @@ def _safe_rel(path: str) -> Path:
         raise ValueError(f"Invalid generated path: {path}")
 
     return p
+
 
 def _materialize_workspace(
     qa_payload: QAJobPayload,
@@ -63,21 +65,15 @@ def _materialize_workspace(
 
     return ws, temp.cleanup
 
+
 def _collect_targets(
     qa_payload: QAJobPayload,
 ) -> tuple[list[str], list[str]]:
     generated = _collect_generated(qa_payload)
 
-    py_targets = [
-        path for path in generated
-        if path.endswith(".py")
-    ]
+    py_targets = [path for path in generated if path.endswith(".py")]
 
-    test_targets = [
-        path
-        for path in qa_payload.coding_output.tests_map
-        if path.strip()
-    ]
+    test_targets = [path for path in qa_payload.coding_output.tests_map if path.strip()]
 
     if not test_targets:
         test_targets = [
@@ -87,6 +83,7 @@ def _collect_targets(
         ]
 
     return py_targets, test_targets
+
 
 def _is_probable_test_path(path: str) -> bool:
     normalized = path.strip().replace("\\", "/").lower()
@@ -103,6 +100,7 @@ def _is_probable_test_path(path: str) -> bool:
         or filename.endswith("_test.py")
     )
 
+
 def _result(
     name: str,
     status: CheckStatus,
@@ -113,6 +111,7 @@ def _result(
         status=status,
         payload=payload or {},
     )
+
 
 def _run_in_sandbox(
     qa_payload: QAJobPayload,
@@ -128,6 +127,7 @@ def _run_in_sandbox(
             print(f"[qa] retained workspace: {ws}")
         else:
             cleanup()
+
 
 def _execute_job(
     *,
@@ -170,7 +170,11 @@ def _execute_job(
     started_at = time.perf_counter()
     try:
         tool_result = _run_in_sandbox(qa_payload, _run)
-        status_label = tool_result.status.value if hasattr(tool_result.status, "value") else str(tool_result.status)
+        status_label = (
+            tool_result.status.value
+            if hasattr(tool_result.status, "value")
+            else str(tool_result.status)
+        )
         logger.info(
             f"qa[{name}] finished -> {status_label}",
             extra={
@@ -198,6 +202,7 @@ def _execute_job(
             {"reason": str(exc)},
         )
 
+
 def run_lint_job(qa_payload: QAJobPayload) -> ToolRunResult:
     py_targets, _ = _collect_targets(qa_payload)
 
@@ -207,10 +212,9 @@ def run_lint_job(qa_payload: QAJobPayload) -> ToolRunResult:
         targets=py_targets,
         empty_reason="no_python_targets",
         runner_factory=lambda sb: LintRunner(sb),
-        status_resolver=lambda r: (
-            CheckStatus.PASS if r.success else CheckStatus.FAIL
-        ),
+        status_resolver=lambda r: CheckStatus.PASS if r.success else CheckStatus.FAIL,
     )
+
 
 def run_tests_job(qa_payload: QAJobPayload) -> ToolRunResult:
     _, test_targets = _collect_targets(qa_payload)
@@ -221,10 +225,9 @@ def run_tests_job(qa_payload: QAJobPayload) -> ToolRunResult:
         targets=test_targets,
         empty_reason="no_test_targets",
         runner_factory=lambda sb: TestRunner(sb),
-        status_resolver=lambda r: (
-            CheckStatus.PASS if r.success else CheckStatus.FAIL
-        ),
+        status_resolver=lambda r: CheckStatus.PASS if r.success else CheckStatus.FAIL,
     )
+
 
 def run_coverage_job(qa_payload: QAJobPayload) -> ToolRunResult:
     _, test_targets = _collect_targets(qa_payload)
@@ -239,19 +242,14 @@ def run_coverage_job(qa_payload: QAJobPayload) -> ToolRunResult:
             threshold=qa_payload.coverage_threshold,
         ),
         status_resolver=lambda r: (
-            CheckStatus.PASS
-            if r.success and r.threshold_passed
-            else CheckStatus.FAIL
+            CheckStatus.PASS if r.success and r.threshold_passed else CheckStatus.FAIL
         ),
     )
 
+
 def run_security_job(qa_payload: QAJobPayload) -> ToolRunResult:
     py_targets, _ = _collect_targets(qa_payload)
-    security_targets = [
-        path
-        for path in py_targets
-        if not _is_probable_test_path(path)
-    ]
+    security_targets = [path for path in py_targets if not _is_probable_test_path(path)]
 
     if py_targets and not security_targets:
         return _result(
@@ -271,7 +269,5 @@ def run_security_job(qa_payload: QAJobPayload) -> ToolRunResult:
         targets=security_targets,
         empty_reason="no_python_targets",
         runner_factory=lambda sb: SecurityRunner(sb),
-        status_resolver=lambda r: (
-            CheckStatus.PASS if r.success else CheckStatus.FAIL
-        ),
+        status_resolver=lambda r: CheckStatus.PASS if r.success else CheckStatus.FAIL,
     )

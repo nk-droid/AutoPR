@@ -6,16 +6,19 @@ from core.contracts.enums import GitHubPullRequestState, GitHubReviewState, GitH
 from core.orchestrator.models import RunType
 from infra.github.client import GitHubClient
 
+
 class GitHubWebhookEventMetadata(BaseModel):
     event_type: GitHubWebhookEventType
     delivery_id: str
     action: str
     source: str = "github_webhook"
 
+
 class GitHubRepo(BaseModel):
     full_name: str
     url: str
     default_branch: str
+
 
 class RunContext(BaseModel):
     run_id: uuid.UUID = Field(default_factory=uuid.uuid4)
@@ -23,22 +26,26 @@ class RunContext(BaseModel):
     metadata: GitHubWebhookEventMetadata
     repository: GitHubRepo
 
+
 class IssueToPRContext(RunContext):
     issue_number: int
     head_branch: str
     base_branch: str
     execute_remote_actions: bool = False
 
+
 class PRToMergeContext(RunContext):
     pull_request_number: int
     review_approved: bool
     execute_remote_actions: bool = False
+
 
 class GitHubComment(BaseModel):
     url: str
     body: str | None = None
     created_at: datetime
     updated_at: datetime
+
 
 class GitHubIssue(BaseModel):
     number: int
@@ -49,13 +56,14 @@ class GitHubIssue(BaseModel):
     created_at: datetime
     updated_at: datetime
 
+
 class IssuePayload(BaseModel):
     action: str
     issue: GitHubIssue
     repository: GitHubRepo
 
     @model_validator(mode="after")
-    def populate_comments(self) -> 'IssuePayload':
+    def populate_comments(self) -> "IssuePayload":
         """Pull issue comments and add to GitHubIssue model"""
         github_client = GitHubClient()
         comments = github_client.list_issue_comments(
@@ -63,6 +71,7 @@ class IssuePayload(BaseModel):
         )
         self.issue.comment_list = [GitHubComment(**comment) for comment in comments]
         return self
+
 
 class GitHubPullRequest(BaseModel):
     number: int
@@ -73,8 +82,10 @@ class GitHubPullRequest(BaseModel):
     updated_at: datetime
     state: GitHubPullRequestState
 
+
 class GitHubReview(BaseModel):
     state: GitHubReviewState
+
 
 class PRReviewPayload(BaseModel):
     action: str
@@ -82,11 +93,13 @@ class PRReviewPayload(BaseModel):
     pull_request: GitHubPullRequest
     repository: GitHubRepo
 
+
 class WebhookHandleResult(BaseModel):
     accepted: bool
     duplicate: bool
     ignored_reason: str
     jobs: list[Union[IssueToPRContext, PRToMergeContext]]
+
 
 class WebhookDispatchResult(BaseModel):
     accepted: bool

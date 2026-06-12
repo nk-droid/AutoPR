@@ -39,6 +39,7 @@ TRANSITIONS_BY_RUN_TYPE: dict[RunType, dict[str, set[str]]] = {
     RunType.PR_TO_MERGE: PR_TO_MERGE_TRANSITIONS,
 }
 
+
 def allowed_next_states(current_state: str, run_type: RunType = RunType.ISSUE_TO_PR) -> set[str]:
     """
     Return all states reachable from the current state for a workflow.
@@ -53,6 +54,7 @@ def allowed_next_states(current_state: str, run_type: RunType = RunType.ISSUE_TO
 
     transition_map = TRANSITIONS_BY_RUN_TYPE.get(run_type, ISSUE_TO_PR_TRANSITIONS)
     return transition_map.get(current_state, set())
+
 
 def can_transition(
     current_state: str,
@@ -76,6 +78,7 @@ def can_transition(
         return True
     return candidate_state in allowed_next_states(current_state, run_type)
 
+
 def next_state(
     current_state: str,
     decision: str,
@@ -98,6 +101,7 @@ def next_state(
     if can_transition(current_state, decision, run_type):
         return decision
     return current_state
+
 
 def can_open_pr(qa_result: StageResult | None) -> PRDecision:
     """
@@ -123,6 +127,7 @@ def can_open_pr(qa_result: StageResult | None) -> PRDecision:
             blocking_reasons=["qa_not_green"],
         )
     return PRDecision(allowed=True, reason="QA checks passed")
+
 
 def can_merge_pr(
     review_result: StageResult | None,

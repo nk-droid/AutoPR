@@ -4,6 +4,7 @@ from pathlib import Path
 from infra.qa.models import CoverageFile, CoverageResult
 from infra.qa.sandbox import Sandbox
 
+
 class CoverageRunner:
     def __init__(self, sandbox: Sandbox, threshold: float = 80.0):
         self.sandbox = sandbox
@@ -20,11 +21,13 @@ class CoverageRunner:
 
         if self.sandbox.workspace is None:
             return CoverageResult(success=False, coverage_pct=0.0, threshold_passed=False)
-        
+
         report_path = Path(self.sandbox.workspace) / "coverage.json"
         if not report_path.exists():
-            return CoverageResult(success=False, coverage_pct=0.0, threshold_passed=False, raw_output=test_run.stderr)
-        
+            return CoverageResult(
+                success=False, coverage_pct=0.0, threshold_passed=False, raw_output=test_run.stderr
+            )
+
         data = json.loads(report_path.read_text())
         total = float(data["totals"]["percent_covered"])
         files: list[CoverageFile] = []
@@ -35,7 +38,7 @@ class CoverageRunner:
                     coverage_pct=float(info["summary"]["percent_covered"]),
                 )
             )
-            
+
         return CoverageResult(
             success=test_run.success,
             coverage_pct=total,

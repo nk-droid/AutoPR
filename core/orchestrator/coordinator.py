@@ -19,9 +19,11 @@ from observability.metrics import observe_run, observe_stage
 from observability.tracing import get_tracer, inject_trace_context
 
 import dotenv
+
 dotenv.load_dotenv()
 
 logger = logging.getLogger(__name__)
+
 
 class Coordinator:
     def __init__(self, run: RunModel | None = None) -> None:
@@ -34,7 +36,11 @@ class Coordinator:
         # Record the run before any stage can mutate pipeline state.
         self._persist_run(event_type="run_initialized", payload={"state": self.run.state})
 
-        run_type_label = self.run.run_type.value if hasattr(self.run.run_type, "value") else str(self.run.run_type)
+        run_type_label = (
+            self.run.run_type.value
+            if hasattr(self.run.run_type, "value")
+            else str(self.run.run_type)
+        )
         logger.info(
             f"run initialized [{run_type_label}]",
             extra={
@@ -45,7 +51,9 @@ class Coordinator:
             },
         )
 
-    def _persist_run(self, *, event_type: str | None = None, payload: dict[str, Any] | None = None) -> None:
+    def _persist_run(
+        self, *, event_type: str | None = None, payload: dict[str, Any] | None = None
+    ) -> None:
         """
         Store the current run snapshot and optionally append an audit event.
 
@@ -55,7 +63,11 @@ class Coordinator:
         """
 
         run_id = str(self.run.run_id)
-        run_type = self.run.run_type.value if hasattr(self.run.run_type, "value") else str(self.run.run_type)
+        run_type = (
+            self.run.run_type.value
+            if hasattr(self.run.run_type, "value")
+            else str(self.run.run_type)
+        )
         run_payload = self.run.model_dump(mode="json")
 
         # Persist run snapshots so recovery sees the latest pipeline state.
@@ -122,7 +134,9 @@ class Coordinator:
             extra={
                 "event": "state_transition",
                 "run_id": str(self.run.run_id),
-                "run_type": self.run.run_type.value if hasattr(self.run.run_type, "value") else str(self.run.run_type),
+                "run_type": self.run.run_type.value
+                if hasattr(self.run.run_type, "value")
+                else str(self.run.run_type),
                 "from_state": from_state,
                 "to_state": state,
                 "reason": reason,
@@ -158,7 +172,9 @@ class Coordinator:
             extra={
                 "event": "run_blocked",
                 "run_id": str(self.run.run_id),
-                "run_type": self.run.run_type.value if hasattr(self.run.run_type, "value") else str(self.run.run_type),
+                "run_type": self.run.run_type.value
+                if hasattr(self.run.run_type, "value")
+                else str(self.run.run_type),
                 "reason": reason,
                 "stage": str((metadata or {}).get("stage", "")),
             },
@@ -196,7 +212,9 @@ class Coordinator:
         self.run.stage_results.append(result)
         run_id = str(self.run.run_id)
         stage_name = result.stage
-        stage_status = result.status.value if hasattr(result.status, "value") else str(result.status)
+        stage_status = (
+            result.status.value if hasattr(result.status, "value") else str(result.status)
+        )
         artifact_key = f"stage_result:{len(self.run.stage_results) - 1}:{stage_name}"
         save_artifact(
             run_id,
@@ -224,7 +242,9 @@ class Coordinator:
 
         context["repository"] = context.get("repository") or self.run.repository
         context["issue_number"] = context.get("issue_number") or self.run.issue_number
-        context["pull_request_number"] = context.get("pull_request_number") or self.run.pull_request_number
+        context["pull_request_number"] = (
+            context.get("pull_request_number") or self.run.pull_request_number
+        )
         context["metadata"] = context.get("metadata") or self.run.metadata
 
     def _sync_run_from_context(self, context: dict[str, Any]) -> None:
@@ -262,7 +282,7 @@ class Coordinator:
             status=stage_status,
             outputs=outputs,
         )
-    
+
     @staticmethod
     def _first_stage_index(steps: list[Any], stage: PipelineStage) -> int | None:
         """
@@ -318,7 +338,7 @@ class Coordinator:
                     lines.append(f"- {name} [{status}]: {details}")
 
         return "\n".join(lines)
-    
+
     def _create_review_request(
         self,
         *,
@@ -341,8 +361,11 @@ class Coordinator:
         review_context = {
             "repository": context.get("repository") or self.run.repository,
             "issue_number": context.get("issue_number") or self.run.issue_number,
-            "pull_request_number": context.get("pull_request_number") or self.run.pull_request_number,
-            "metadata": context.get("metadata") if isinstance(context.get("metadata"), dict) else dict(self.run.metadata),
+            "pull_request_number": context.get("pull_request_number")
+            or self.run.pull_request_number,
+            "metadata": context.get("metadata")
+            if isinstance(context.get("metadata"), dict)
+            else dict(self.run.metadata),
             "head_branch": context.get("head_branch"),
             "base_branch": context.get("base_branch"),
             "execute_remote_actions": bool(context.get("execute_remote_actions", False)),
@@ -371,7 +394,9 @@ class Coordinator:
 
         review_request = create_review_request(
             run_id=str(self.run.run_id),
-            run_type=self.run.run_type.value if hasattr(self.run.run_type, "value") else str(self.run.run_type),
+            run_type=self.run.run_type.value
+            if hasattr(self.run.run_type, "value")
+            else str(self.run.run_type),
             stage=stage_name,
             stage_index=step_index,
             context=review_context,
@@ -415,7 +440,9 @@ class Coordinator:
 
         # Make previous stages available in the context
         for previous in self.run.stage_results:
-            previous_stage_name = previous.stage.value if hasattr(previous.stage, "value") else str(previous.stage)
+            previous_stage_name = (
+                previous.stage.value if hasattr(previous.stage, "value") else str(previous.stage)
+            )
             stage_results[previous_stage_name] = previous
             if isinstance(previous.outputs, dict):
                 for key, value in previous.outputs.items():
@@ -481,7 +508,9 @@ class Coordinator:
                 extra={
                     "event": "stage_started",
                     "run_id": str(self.run.run_id),
-                    "run_type": self.run.run_type.value if hasattr(self.run.run_type, "value") else str(self.run.run_type),
+                    "run_type": self.run.run_type.value
+                    if hasattr(self.run.run_type, "value")
+                    else str(self.run.run_type),
                     "stage": stage_label,
                     "stage_index": step_index,
                 },
@@ -497,11 +526,15 @@ class Coordinator:
                 duration_sec,
             )
 
-            status_label = result.status.value if hasattr(result.status, "value") else str(result.status)
+            status_label = (
+                result.status.value if hasattr(result.status, "value") else str(result.status)
+            )
             stage_log = {
                 "event": "stage_finished",
                 "run_id": str(self.run.run_id),
-                "run_type": self.run.run_type.value if hasattr(self.run.run_type, "value") else str(self.run.run_type),
+                "run_type": self.run.run_type.value
+                if hasattr(self.run.run_type, "value")
+                else str(self.run.run_type),
                 "stage": stage_label,
                 "stage_index": step_index,
                 "status": status_label,
@@ -510,7 +543,9 @@ class Coordinator:
             if is_success_status(result.status):
                 logger.info(f"stage[{stage_label}] finished -> {status_label}", extra=stage_log)
             else:
-                required_actions = result.notes.get("required_actions") if isinstance(result.notes, dict) else None
+                required_actions = (
+                    result.notes.get("required_actions") if isinstance(result.notes, dict) else None
+                )
                 logger.warning(
                     f"stage[{stage_label}] did not pass -> {status_label}",
                     extra={**stage_log, "required_actions": required_actions},
@@ -529,26 +564,17 @@ class Coordinator:
                 self.transition_to(next_state, reason=reason or str(step.stage.value))
 
             # Pause publish or soft-risk flows for human review
-            if (
-                result.status == StageStatus.NEEDS_REVIEW
-                and (
-                    getattr(step, "stage", None) == PipelineStage.PUBLISH
-                    or result.notes.get("review_request_kind") == "llm_soft_gate"
-                )
+            if result.status == StageStatus.NEEDS_REVIEW and (
+                getattr(step, "stage", None) == PipelineStage.PUBLISH
+                or result.notes.get("review_request_kind") == "llm_soft_gate"
             ):
-                self._create_review_request(
-                    step_index=step_index,
-                    result=result,
-                    context=context
-                )
+                self._create_review_request(step_index=step_index, result=result, context=context)
 
             # Stop or retry on failure
             if not is_success_status(result.status):
                 is_qa_step = getattr(step, "stage", None) == PipelineStage.QA
                 can_retry_qa = (
-                    is_qa_step
-                    and code_stage_index is not None
-                    and qa_retry_count < qa_max_retries
+                    is_qa_step and code_stage_index is not None and qa_retry_count < qa_max_retries
                 )
 
                 # Fail back to code and retry if the stage allows
@@ -560,14 +586,16 @@ class Coordinator:
                     retry_metadata = {
                         "qa_retry_count": qa_retry_count,
                         "qa_max_retries": qa_max_retries,
-                        "qa_status": result.status.value
+                        "qa_status": result.status.value,
                     }
 
-                    if can_transition(self.state_machine.state, RunState.QA_RUNNING.value, self.run.run_type):
+                    if can_transition(
+                        self.state_machine.state, RunState.QA_RUNNING.value, self.run.run_type
+                    ):
                         self.transition_to(
                             RunState.QA_RUNNING.value,
                             reason="qa_failed_retry_pending",
-                            metadata=retry_metadata
+                            metadata=retry_metadata,
                         )
 
                     self.transition_to(
@@ -606,7 +634,7 @@ class Coordinator:
                 "autopr.run_type": self.run.run_type.value,
                 "autopr.repository": context.repository,
                 "autopr.issue_number": context.issue_number,
-            }
+            },
         ) as span:
             started_at = time.perf_counter()
             final_run = self._run_steps(context.model_dump(mode="json"))
@@ -645,7 +673,7 @@ class Coordinator:
                 "autopr.run_type": self.run.run_type.value,
                 "autopr.repository": context.repository,
                 "autopr.pull_request_number": context.pull_request_number,
-            }
+            },
         ) as span:
             started_at = time.perf_counter()
             final_run = self._run_steps(context.model_dump(mode="json"))
@@ -664,8 +692,8 @@ class Coordinator:
             )
             return final_run
 
+
 if __name__ == "__main__":
-    import json
     import time
     import uuid
 
@@ -687,9 +715,9 @@ if __name__ == "__main__":
         "issue_number": run_model.issue_number,
         "pull_request_number": run_model.pull_request_number,
         "metadata": run_model.metadata,
-        "head_branch": "autopr/issue-1",   # required
-        "base_branch": "main",             # optional (defaults to main)
-        "execute_remote_actions": True,    # needed to actually open PR via API
+        "head_branch": "autopr/issue-1",  # required
+        "base_branch": "main",  # optional (defaults to main)
+        "execute_remote_actions": True,  # needed to actually open PR via API
     }
     coordinator = Coordinator(run_model)
     issue_to_pr_run = coordinator.run_issue_to_pr(context=IssueToPRContext(**context))

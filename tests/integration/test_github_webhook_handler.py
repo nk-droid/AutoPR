@@ -18,6 +18,7 @@ from infra.github.models import IssueToPRContext
 from infra.github.models import PRToMergeContext
 from infra.github.models import WebhookDispatchResult
 
+
 def _load_webhook_handler_module():
     fake_coordinator_module = types.ModuleType("core.orchestrator.coordinator")
     fake_resume_module = types.ModuleType("core.orchestrator.resume")
@@ -39,11 +40,14 @@ def _load_webhook_handler_module():
     sys.modules.pop("infra.github.webhook_handler", None)
     return importlib.import_module("infra.github.webhook_handler")
 
+
 webhook_handler = _load_webhook_handler_module()
+
 
 class _CommentClient:
     def list_issue_comments(self, repo: str, issue_number: int):
         return []
+
 
 def _issue_payload_dict(action: str = "opened") -> dict:
     now = datetime.now(timezone.utc).isoformat()
@@ -64,6 +68,7 @@ def _issue_payload_dict(action: str = "opened") -> dict:
         },
     }
 
+
 def test_verify_signature_with_secret(monkeypatch: pytest.MonkeyPatch) -> None:
     body = b'{"x":1}'
     monkeypatch.setenv("GITHUB_WEBHOOK_SECRET", "shh")
@@ -76,6 +81,7 @@ def test_verify_signature_with_secret(monkeypatch: pytest.MonkeyPatch) -> None:
         webhook_handler._verify_signature(body, "bad")
     with pytest.raises(PermissionError, match="verification failed"):
         webhook_handler._verify_signature(body, "sha256=deadbeef")
+
 
 def test_handle_github_webhook_issues_event(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("GITHUB_WEBHOOK_SECRET", "")
@@ -95,6 +101,7 @@ def test_handle_github_webhook_issues_event(monkeypatch: pytest.MonkeyPatch) -> 
     assert job.issue_number == 7
     assert job.head_branch == "autopr/issue-7"
 
+
 def test_handle_github_webhook_filtered_event(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("GITHUB_WEBHOOK_SECRET", "")
     monkeypatch.setattr("infra.github.models.GitHubClient", lambda: _CommentClient())
@@ -108,6 +115,7 @@ def test_handle_github_webhook_filtered_event(monkeypatch: pytest.MonkeyPatch) -
     assert result.accepted is True
     assert result.jobs == []
     assert result.ignored_reason == "event_not_mapped_or_filtered"
+
 
 def test_handle_github_webhook_missing_headers(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("GITHUB_WEBHOOK_SECRET", "")
@@ -126,6 +134,7 @@ def test_handle_github_webhook_missing_headers(monkeypatch: pytest.MonkeyPatch) 
             signature_256=None,
         )
 
+
 class _FakeCoordinator:
     def __init__(self, run):
         self.run = run
@@ -137,6 +146,7 @@ class _FakeCoordinator:
     def run_pr_to_merge(self, context):
         self.run.state = RunState.MERGED.value
         return self.run
+
 
 def _make_issue_job() -> IssueToPRContext:
     repo = GitHubRepo(
@@ -160,6 +170,7 @@ def _make_issue_job() -> IssueToPRContext:
         execute_remote_actions=False,
     )
 
+
 def _make_merge_job() -> PRToMergeContext:
     repo = GitHubRepo(
         full_name="acme/repo",
@@ -180,6 +191,7 @@ def _make_merge_job() -> PRToMergeContext:
         review_approved=True,
         execute_remote_actions=False,
     )
+
 
 def test_dispatch_webhook_job_issue_and_merge(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(webhook_handler, "Coordinator", _FakeCoordinator)

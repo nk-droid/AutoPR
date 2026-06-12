@@ -5,6 +5,7 @@ import pytest
 
 from infra.github import models as github_models
 
+
 def test_issue_payload_populates_comments(monkeypatch: pytest.MonkeyPatch) -> None:
     now = datetime.now(timezone.utc).isoformat()
 

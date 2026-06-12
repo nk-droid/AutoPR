@@ -19,6 +19,7 @@ from observability.metrics import (
     configure_metrics,
 )
 
+
 def _extract_usage(response: LLMResult) -> tuple[int, int]:
     in_tokens = out_tokens = 0
     for generation in response.generations:
@@ -35,6 +36,7 @@ def _extract_usage(response: LLMResult) -> tuple[int, int]:
         out_tokens = token_usage.get("completion_tokens", 0)
 
     return in_tokens, out_tokens
+
 
 class LLMMetricsCallbackHandler(BaseCallbackHandler):
     def __init__(
@@ -64,25 +66,14 @@ class LLMMetricsCallbackHandler(BaseCallbackHandler):
         }
 
     def on_llm_start(
-        self,
-        serialized: dict,
-        prompts: list[str],
-        *,
-        run_id: UUID,
-        **kwargs: Any
+        self, serialized: dict, prompts: list[str], *, run_id: UUID, **kwargs: Any
     ) -> None:
         self._starts[run_id] = time.time()
         LLM_IN_FLIGHT.add(1, {"provider": self.provider, "model": self.model})
 
     on_chat_model_start = on_llm_start
 
-    def on_llm_end(
-        self,
-        response: LLMResult,
-        *,
-        run_id: UUID,
-        **kwargs: Any
-    ) -> None:
+    def on_llm_end(self, response: LLMResult, *, run_id: UUID, **kwargs: Any) -> None:
         start_time = self._starts.pop(run_id, time.time())
         duration = time.time() - start_time
         LLM_IN_FLIGHT.add(-1, {"provider": self.provider, "model": self.model})
@@ -97,12 +88,22 @@ class LLMMetricsCallbackHandler(BaseCallbackHandler):
         if in_tokens:
             LLM_TOKENS_PER_REQUEST.record(
                 in_tokens,
-                {"provider": self.provider, "model": self.model, "agent": self.agent, "kind": "input"},
+                {
+                    "provider": self.provider,
+                    "model": self.model,
+                    "agent": self.agent,
+                    "kind": "input",
+                },
             )
         if out_tokens:
             LLM_TOKENS_PER_REQUEST.record(
                 out_tokens,
-                {"provider": self.provider, "model": self.model, "agent": self.agent, "kind": "output"},
+                {
+                    "provider": self.provider,
+                    "model": self.model,
+                    "agent": self.agent,
+                    "kind": "output",
+                },
             )
         if duration > 0 and out_tokens:
             LLM_TOKENS_PER_SECOND.record(
@@ -122,13 +123,7 @@ class LLMMetricsCallbackHandler(BaseCallbackHandler):
             if cost:
                 span.set_attribute("autopr.llm.cost_usd", cost)
 
-    def on_llm_error(
-        self,
-        error: Exception,
-        *,
-        run_id: UUID,
-        **kwargs: Any
-    ) -> None:
+    def on_llm_error(self, error: Exception, *, run_id: UUID, **kwargs: Any) -> None:
         start_time = self._starts.pop(run_id, time.time())
         duration = time.time() - start_time
         LLM_IN_FLIGHT.add(-1, {"provider": self.provider, "model": self.model})

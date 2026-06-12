@@ -11,6 +11,7 @@ from core.orchestrator.steps.qa import QAStep
 from core.orchestrator.steps.review import ReviewStep
 from core.orchestrator.steps.triage import TriageStep
 
+
 def steps_for_run_type(run_type: RunType) -> list[PipelineStep]:
     """
     Build the ordered pipeline steps for the selected workflow type.

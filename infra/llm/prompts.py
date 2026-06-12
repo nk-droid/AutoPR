@@ -4,6 +4,7 @@ from string import Formatter
 import yaml
 from pydantic import BaseModel, Field, ValidationError, field_validator
 
+
 class PromptConfig(BaseModel):
     template: str
     input_vars: list[str] = Field(default_factory=list)
@@ -31,6 +32,7 @@ class PromptConfig(BaseModel):
             normalized.append(name)
         return normalized
 
+
 def _extract_template_fields(template: str) -> set[str]:
     fields: set[str] = set()
     for _literal_text, field_name, _format_spec, _conversion in Formatter().parse(template):
@@ -40,6 +42,7 @@ def _extract_template_fields(template: str) -> set[str]:
         if base_name:
             fields.add(base_name)
     return fields
+
 
 def load_prompt_catalog(path: str | Path) -> dict[str, PromptConfig]:
     catalog_path = Path(path)
@@ -86,6 +89,7 @@ def load_prompt_catalog(path: str | Path) -> dict[str, PromptConfig]:
         prompts[key.strip()] = prompt
 
     return prompts
+
 
 def require_prompt(
     catalog: dict[str, PromptConfig],

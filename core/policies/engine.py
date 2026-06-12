@@ -11,6 +11,7 @@ from core.orchestrator.models import MergeDecision, StageResult
 
 logger = logging.getLogger(__name__)
 
+
 class PolicyFinding(BaseModel):
     """Reviewer-facing policy finding with an optional internal reason code."""
 
@@ -18,11 +19,13 @@ class PolicyFinding(BaseModel):
     suggested_fix: str
     internal_code: str = ""
 
+
 class PolicyConfig(BaseModel):
     """Configuration that controls deterministic merge policy checks."""
 
     block_high_risk_automerge: bool = True
     sensitive_path_patterns: list[str] = Field(default_factory=list)
+
 
 class PolicyEvaluation(BaseModel):
     """Policy decision paired with findings safe to show to reviewers."""
@@ -30,7 +33,10 @@ class PolicyEvaluation(BaseModel):
     decision: MergeDecision
     public_findings: list[PolicyFinding] = Field(default_factory=list)
 
+
 _POLICY_PATH = Path(__file__).resolve().parents[2] / "configs" / "policies.yaml"
+
+
 def load_policy_config(path: Path = _POLICY_PATH) -> PolicyConfig:
     """
     Load merge policy settings, falling back to safe defaults when absent.
@@ -68,6 +74,7 @@ def load_policy_config(path: Path = _POLICY_PATH) -> PolicyConfig:
     )
     return config
 
+
 def coerce_merge_decision(value: Any) -> MergeDecision | None:
     """
     Normalize optional policy input into a merge decision model.
@@ -87,6 +94,7 @@ def coerce_merge_decision(value: Any) -> MergeDecision | None:
         except Exception:
             return None
     return None
+
 
 def _risk_levels(context: Mapping[str, Any]) -> list[str]:
     """
@@ -118,6 +126,7 @@ def _risk_levels(context: Mapping[str, Any]) -> list[str]:
 
     return levels
 
+
 def _changed_paths(context: Mapping[str, Any]) -> set[str]:
     """
     Collect changed file paths reported by review and coding stages.
@@ -148,6 +157,7 @@ def _changed_paths(context: Mapping[str, Any]) -> set[str]:
 
     return paths
 
+
 def _stage_result(context: Mapping[str, Any], stage: PipelineStage) -> StageResult | None:
     """
     Retrieve a stage result from workflow context when available.
@@ -173,6 +183,7 @@ def _stage_result(context: Mapping[str, Any], stage: PipelineStage) -> StageResu
             return None
     return None
 
+
 def _qa_findings(context: Mapping[str, Any]) -> list[PolicyFinding]:
     """
     Convert non-green QA results into merge-blocking policy findings.
@@ -196,6 +207,7 @@ def _qa_findings(context: Mapping[str, Any]) -> list[PolicyFinding]:
             suggested_fix="Review the latest validation feedback, update the branch, and rerun the checks before merging.",
         )
     ]
+
 
 def evaluate_review_policy(context: Mapping[str, Any]) -> PolicyEvaluation:
     """
@@ -239,7 +251,9 @@ def evaluate_review_policy(context: Mapping[str, Any]) -> PolicyEvaluation:
             decision=MergeDecision(
                 allowed=False,
                 reason="Policy checks blocked merge",
-                blocking_reasons=[finding.internal_code for finding in findings if finding.internal_code],
+                blocking_reasons=[
+                    finding.internal_code for finding in findings if finding.internal_code
+                ],
             ),
             public_findings=findings,
         )

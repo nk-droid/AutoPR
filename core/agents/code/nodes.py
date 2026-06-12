@@ -17,13 +17,18 @@ _PROMPTS_PATH = Path(__file__).with_name("prompts.yaml")
 _PROMPTS = load_prompt_catalog(_PROMPTS_PATH)
 FILE_GENERATION_PROMPT = require_prompt(_PROMPTS, "file_generation", source=_PROMPTS_PATH)
 
+
 class GeneratedFile(BaseModel):
     path: str = Field(..., description="Relative path of the changed file.")
     content: str = Field(..., description="Full file content after changes.")
 
+
 class GeneratedFilesPayload(BaseModel):
-    files: list[GeneratedFile] = Field(default_factory=list, description="Changed files with full contents.")
+    files: list[GeneratedFile] = Field(
+        default_factory=list, description="Changed files with full contents."
+    )
     summary: str = Field(default="", description="Short summary of overall implementation.")
+
 
 def _dedupe_preserve_order(values: list[str]) -> list[str]:
     seen: set[str] = set()
@@ -40,11 +45,13 @@ def _dedupe_preserve_order(values: list[str]) -> list[str]:
 
     return result
 
+
 def _truncate_text(value: str, max_chars: int = 6000) -> str:
     if len(value) <= max_chars:
         return value
 
     return value[:max_chars] + "\n...<truncated>..."
+
 
 def _normalize_test_target(value: str) -> str:
     text = value.strip()
@@ -55,6 +62,7 @@ def _normalize_test_target(value: str) -> str:
         text = text.split("::", 1)[0].strip()
 
     return text
+
 
 def _is_probable_test_path(path: str) -> bool:
     normalized = path.strip().replace("\\", "/").lower()
@@ -71,22 +79,15 @@ def _is_probable_test_path(path: str) -> bool:
         or filename.endswith("_test.py")
     )
 
+
 def _resolve_code_step(state: dict[str, Any]) -> CodeStep:
     step_value = state.get("step")
 
     if isinstance(step_value, PlanStep):
         return CodeStep(
             objective=step_value.objective,
-            files=[
-                item.strip()
-                for item in step_value.files
-                if item.strip()
-            ],
-            tests=[
-                item.strip()
-                for item in step_value.tests
-                if item.strip()
-            ],
+            files=[item.strip() for item in step_value.files if item.strip()],
+            tests=[item.strip() for item in step_value.tests if item.strip()],
         )
 
     notes = state.get("notes", {})
@@ -101,6 +102,7 @@ def _resolve_code_step(state: dict[str, Any]) -> CodeStep:
             return CodeStep.model_validate(note_step)
 
     return CodeStep(objective="", files=[], tests=[])
+
 
 def _build_file_context(
     target_files: list[str],
@@ -119,17 +121,13 @@ def _build_file_context(
         raw_content = file_contents.get(path)
 
         if raw_content is None:
-            chunks.append(
-                f"### FILE: {path}\n<content not provided>"
-            )
+            chunks.append(f"### FILE: {path}\n<content not provided>")
             continue
 
-        chunks.append(
-            f"### FILE: {path}\n"
-            f"{_truncate_text(raw_content, max_chars_per_file)}"
-        )
+        chunks.append(f"### FILE: {path}\n{_truncate_text(raw_content, max_chars_per_file)}")
 
     return "\n\n".join(chunks)
+
 
 def _build_dependency_context(
     dependency_files: dict[str, str],
@@ -146,12 +144,10 @@ def _build_dependency_context(
         if not isinstance(path, str) or not isinstance(content, str):
             continue
 
-        chunks.append(
-            f"### FILE: {path}\n"
-            f"{_truncate_text(content, max_chars_per_file)}"
-        )
+        chunks.append(f"### FILE: {path}\n{_truncate_text(content, max_chars_per_file)}")
 
     return "\n\n".join(chunks)
+
 
 def _block_state(
     state: dict[str, Any],
@@ -170,6 +166,7 @@ def _block_state(
     state["notes"] = notes
 
     return state
+
 
 @traced(
     "code_step.understand_task",
@@ -203,6 +200,7 @@ def understand_task(state: dict[str, Any]) -> dict[str, Any]:
     state["notes"] = notes
 
     return state
+
 
 @traced(
     "code_step.locate_files",
@@ -238,10 +236,7 @@ def locate_files(state: dict[str, Any]) -> dict[str, Any]:
     test_files = _dedupe_preserve_order(
         [
             normalized
-            for normalized in (
-                _normalize_test_target(test)
-                for test in code_step.tests
-            )
+            for normalized in (_normalize_test_target(test) for test in code_step.tests)
             if normalized
         ]
     )
@@ -260,6 +255,7 @@ def locate_files(state: dict[str, Any]) -> dict[str, Any]:
     state["notes"] = notes
 
     return state
+
 
 @traced(
     "code_step.generate_patch",
@@ -284,10 +280,7 @@ def generate_patch(state: dict[str, Any]) -> dict[str, Any]:
     # Extract the code step from the state
     code_step = _resolve_code_step(state)
 
-    objective = (
-        code_step.objective.strip()
-        or "Implement planned changes"
-    )
+    objective = code_step.objective.strip() or "Implement planned changes"
 
     # Extract QA feedback from the state, if available
     # Used to provide addtional context to the model for re-generation after a failed validation
@@ -301,9 +294,7 @@ def generate_patch(state: dict[str, Any]) -> dict[str, Any]:
     # Extract the target files from the state. Block the generation if the target files are missing or invalid
     raw_target_files = state.get("target_files", [])
     target_files = (
-        _dedupe_preserve_order(raw_target_files)
-        if isinstance(raw_target_files, list)
-        else []
+        _dedupe_preserve_order(raw_target_files) if isinstance(raw_target_files, list) else []
     )
 
     if not target_files:
@@ -314,27 +305,15 @@ def generate_patch(state: dict[str, Any]) -> dict[str, Any]:
         )
 
     # Extract and normalize tests from the code step
-    tests = [
-        item.strip()
-        for item in code_step.tests
-        if item.strip()
-    ]
+    tests = [item.strip() for item in code_step.tests if item.strip()]
 
     # Extract repo map from state
     repo_map_value = state.get("repo_map", "")
-    repo_map = (
-        repo_map_value
-        if isinstance(repo_map_value, str)
-        else ""
-    )
+    repo_map = repo_map_value if isinstance(repo_map_value, str) else ""
 
     # Build context from file contents
     file_contents_value = state.get("file_contents", {})
-    file_contents = (
-        file_contents_value
-        if isinstance(file_contents_value, dict)
-        else {}
-    )
+    file_contents = file_contents_value if isinstance(file_contents_value, dict) else {}
 
     file_context = _build_file_context(
         target_files,
@@ -343,11 +322,7 @@ def generate_patch(state: dict[str, Any]) -> dict[str, Any]:
 
     # Build context from dependency files
     dependency_files_value = state.get("dependency_files", {})
-    dependency_files = (
-        dependency_files_value
-        if isinstance(dependency_files_value, dict)
-        else {}
-    )
+    dependency_files = dependency_files_value if isinstance(dependency_files_value, dict) else {}
 
     dependency_context = _build_dependency_context(dependency_files)
     if dependency_context:
@@ -366,15 +341,9 @@ def generate_patch(state: dict[str, Any]) -> dict[str, Any]:
                 "objective": objective,
                 "qa_feedback": qa_feedback_text,
                 "target_files": "\n".join(target_files),
-                "tests": (
-                    "\n".join(tests)
-                    if tests
-                    else "No tests specified."
-                ),
+                "tests": ("\n".join(tests) if tests else "No tests specified."),
                 "repo_map": (
-                    _truncate_text(repo_map, 12000)
-                    if repo_map
-                    else "No repo map provided."
+                    _truncate_text(repo_map, 12000) if repo_map else "No repo map provided."
                 ),
                 "file_context": file_context,
             },
@@ -446,6 +415,7 @@ def generate_patch(state: dict[str, Any]) -> dict[str, Any]:
 
     return state
 
+
 @traced(
     "code_step.validate_patch",
     attributes=langgraph_node_attrs("code", "validate_patch"),
@@ -459,7 +429,7 @@ def validate_patch(state: dict[str, Any]) -> dict[str, Any]:
         - "files" key with the generated file contents as a dict of file paths to contents.
         - "target_files" key with the list of files that were intended to be changed.
         - "notes" key with details about the generation process, including the original objective and any QA feedback.
-    
+
     Returns:
         Updated state with validation results. If validation fails, the state will be blocked with a reason and
         notes about the validation failure. If validation succeeds, the state will be updated with a "files_changed" key and marked as OK.
@@ -479,20 +449,22 @@ def validate_patch(state: dict[str, Any]) -> dict[str, Any]:
         return _block_state(state, reason="no_generated_files")
 
     raw_files_changed = state.get("files_changed", [])
-    files_changed = _dedupe_preserve_order(raw_files_changed) if isinstance(raw_files_changed, list) else []
+    files_changed = (
+        _dedupe_preserve_order(raw_files_changed) if isinstance(raw_files_changed, list) else []
+    )
 
     # if no files_changed, assume all the files in the payload are the changed files
     if not files_changed:
         files_changed = _dedupe_preserve_order(list(files_payload.keys()))
 
     raw_target_files = state.get("target_files", [])
-    target_files = _dedupe_preserve_order(raw_target_files) if isinstance(raw_target_files, list) else []
+    target_files = (
+        _dedupe_preserve_order(raw_target_files) if isinstance(raw_target_files, list) else []
+    )
 
     # Validate that the generated files are the intended files
     unexpected_paths = (
-        [path for path in files_changed if path not in target_files]
-        if target_files
-        else []
+        [path for path in files_changed if path not in target_files] if target_files else []
     )
 
     if unexpected_paths:
@@ -516,7 +488,11 @@ def validate_patch(state: dict[str, Any]) -> dict[str, Any]:
 
     # Validate that all planned tests have been generated
     planned_tests = [item.strip() for item in _resolve_code_step(state).tests if item.strip()]
-    planned_test_paths = [normalized for normalized in (_normalize_test_target(test) for test in planned_tests) if normalized]
+    planned_test_paths = [
+        normalized
+        for normalized in (_normalize_test_target(test) for test in planned_tests)
+        if normalized
+    ]
     missing_test_paths = [path for path in planned_test_paths if path not in files_changed]
 
     if missing_test_paths:
@@ -530,7 +506,11 @@ def validate_patch(state: dict[str, Any]) -> dict[str, Any]:
         )
 
     # Validate that all generated files have non-empty content
-    invalid_paths = [path for path, data in files_payload.items() if not isinstance(data, str) or not data.strip()]
+    invalid_paths = [
+        path
+        for path, data in files_payload.items()
+        if not isinstance(data, str) or not data.strip()
+    ]
     if invalid_paths:
         return _block_state(
             state,
@@ -547,6 +527,7 @@ def validate_patch(state: dict[str, Any]) -> dict[str, Any]:
 
     return state
 
+
 @traced(
     "code_step.finalize",
     attributes=langgraph_node_attrs("code", "finalize"),
@@ -559,9 +540,9 @@ def finalize(state: dict[str, Any]) -> dict[str, Any]:
         state: The current state of the code agent, expected to contain:
         - "files" key with the generated file contents as a dict of file paths to contents.
         - "target_files" key with the list of files that were intended to be changed.
-        - "notes" key with details about the generation and validation process, including 
+        - "notes" key with details about the generation and validation process, including
             the original objective and any QA feedback.
-    
+
     Returns:
         Updated state with a "final_output" key containing the CodeOutput with the generated files and
         tests, and marked as OK. If the state was previously blocked, it will remain unchanged.
@@ -574,12 +555,13 @@ def finalize(state: dict[str, Any]) -> dict[str, Any]:
     generated_files = {
         path: data
         for path, data in files_payload.items()
-        if isinstance(path, str)
-        and isinstance(data, str)
+        if isinstance(path, str) and isinstance(data, str)
     }
 
     raw_files_changed = state.get("files_changed", [])
-    files_changed = _dedupe_preserve_order(raw_files_changed) if isinstance(raw_files_changed, list) else []
+    files_changed = (
+        _dedupe_preserve_order(raw_files_changed) if isinstance(raw_files_changed, list) else []
+    )
 
     if not files_changed and generated_files:
         files_changed = _dedupe_preserve_order(list(generated_files.keys()))

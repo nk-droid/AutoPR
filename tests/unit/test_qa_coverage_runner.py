@@ -3,6 +3,7 @@ import json
 from infra.qa.coverage_runner import CoverageRunner
 from infra.qa.models import CommandResult
 
+
 class FakeSandbox:
     def __init__(self, responses: list[CommandResult], workspace: str | None) -> None:
         self.python = "python3"
@@ -13,6 +14,7 @@ class FakeSandbox:
     def run(self, command: list[str], timeout: int = 300) -> CommandResult:
         self.calls.append((command, timeout))
         return self.responses.pop(0)
+
 
 def test_coverage_runner_returns_failure_when_workspace_is_missing(tmp_path) -> None:
     sandbox = FakeSandbox(
@@ -30,12 +32,15 @@ def test_coverage_runner_returns_failure_when_workspace_is_missing(tmp_path) -> 
     assert sandbox.calls[0][0] == ["python3", "-m", "coverage", "run", "-m", "pytest", "tests"]
     assert sandbox.calls[1][0] == ["python3", "-m", "coverage", "json"]
 
+
 def test_coverage_runner_returns_failure_when_report_file_is_missing(tmp_path) -> None:
     workspace = tmp_path / "ws"
     workspace.mkdir()
     sandbox = FakeSandbox(
         [
-            CommandResult(success=False, exit_code=2, stdout="", stderr="failed tests", duration_sec=0.2),
+            CommandResult(
+                success=False, exit_code=2, stdout="", stderr="failed tests", duration_sec=0.2
+            ),
             CommandResult(success=True, exit_code=0, stdout="", stderr="", duration_sec=0.1),
         ],
         workspace=str(workspace),
@@ -46,6 +51,7 @@ def test_coverage_runner_returns_failure_when_report_file_is_missing(tmp_path) -
     assert result.coverage_pct == 0.0
     assert result.threshold_passed is False
     assert result.raw_output == "failed tests"
+
 
 def test_coverage_runner_parses_json_report(tmp_path) -> None:
     workspace = tmp_path / "ws2"

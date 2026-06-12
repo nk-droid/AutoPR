@@ -6,6 +6,7 @@ from core.contracts.triage import TaskSpec, Risk, AmbiguityResult
 from core.agents.plan.graph import PARSER_RETRY_POLICY
 from core.orchestrator.models import StageStatus
 
+
 class TriageState(TypedDict):
     issue: TriageIssueInput
     task_spec: TaskSpec
@@ -13,6 +14,7 @@ class TriageState(TypedDict):
     ambiguity: AmbiguityResult
     status: StageStatus
     final_output: dict[str, Any]
+
 
 # Extract task -> Assess risk -> Detect ambiguity -> Finalize
 def build_triage_graph(nodes) -> StateGraph[TriageState]:

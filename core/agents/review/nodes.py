@@ -17,8 +17,11 @@ from observability.tracing import traced, langgraph_node_attrs
 _UNKNOWN_MERGEABLE_STATE = "unknown"
 _PROMPTS_PATH = Path(__file__).with_name("prompts.yaml")
 _PROMPTS = load_prompt_catalog(_PROMPTS_PATH)
-LLM_MERGE_RISK_REVIEW_PROMPT = require_prompt(_PROMPTS, "llm_merge_risk_review", source=_PROMPTS_PATH)
+LLM_MERGE_RISK_REVIEW_PROMPT = require_prompt(
+    _PROMPTS, "llm_merge_risk_review", source=_PROMPTS_PATH
+)
 llm_client = create_client()
+
 
 class MergeabilityUnknownError(Exception):
     """
@@ -27,6 +30,7 @@ class MergeabilityUnknownError(Exception):
     Signals the review graph's retry policy to wait and re-evaluate, giving
     GitHub time to resolve `mergeable_state` from `unknown`.
     """
+
 
 def _fetch_live_mergeability(payload: dict[str, Any]) -> tuple[Any, Any] | None:
     """
@@ -50,6 +54,7 @@ def _fetch_live_mergeability(payload: dict[str, Any]) -> tuple[Any, Any] | None:
         client.close()
 
     return pull_request.get("mergeable"), pull_request.get("mergeable_state")
+
 
 @traced(
     "review_step.evaluate_review",
@@ -113,15 +118,25 @@ def evaluate_review(state: dict[str, Any]) -> dict[str, Any]:
         qa_check_details = f"qa_output.status={qa_status}"
 
     # Check if the QA status is blocked or failed
-    elif qa_status in {StageStatus.BLOCKED.value, StageStatus.FAILED.value, CheckStatus.FAIL.value, "failed", "error"}:
+    elif qa_status in {
+        StageStatus.BLOCKED.value,
+        StageStatus.FAILED.value,
+        CheckStatus.FAIL.value,
+        "failed",
+        "error",
+    }:
         qa_check_status = CheckStatus.FAIL
         qa_check_details = f"qa_output.status={qa_status}"
 
     # If the QA status is not available, check the PR mergeability
     elif isinstance(payload.get("pull_request_mergeable"), bool):
         # Fall back to live PR mergeability when qa_output is missing/incomplete.
-        qa_check_status = CheckStatus.PASS if payload.get("pull_request_mergeable") else CheckStatus.FAIL
-        qa_check_details = f"derived_from_pull_request.mergeable={payload.get('pull_request_mergeable')}"
+        qa_check_status = (
+            CheckStatus.PASS if payload.get("pull_request_mergeable") else CheckStatus.FAIL
+        )
+        qa_check_details = (
+            f"derived_from_pull_request.mergeable={payload.get('pull_request_mergeable')}"
+        )
 
     # Check if the PR mergeability state is clean, has hooks, or unstable
     elif payload.get("pull_request_mergeable_state") in {
@@ -141,11 +156,13 @@ def evaluate_review(state: dict[str, Any]) -> dict[str, Any]:
     }:
         qa_check_status = CheckStatus.FAIL
         qa_check_details = f"derived_from_pull_request.mergeable_state={payload.get('pull_request_mergeable_state')}"
-    
+
     # Check if the PR mergeability state is unknown
     elif payload.get("pull_request_mergeable_state"):
         qa_check_status = CheckStatus.WARN
-        qa_check_details = f"pull_request.mergeable_state={payload.get('pull_request_mergeable_state')}"
+        qa_check_details = (
+            f"pull_request.mergeable_state={payload.get('pull_request_mergeable_state')}"
+        )
 
     # Raise MergeabilityUnknownError when the PR mergeability is still unknown for the retry policy
     allow_unknown = bool(state.get("allow_unknown", False))
@@ -162,20 +179,28 @@ def evaluate_review(state: dict[str, Any]) -> dict[str, Any]:
     # If all checks pass, the status is OK
     # If any check is WARN, the status is NEEDS_REVIEW
     checks = [
-        ReviewCheck(name="qa_or_mergeability_green", status=qa_check_status, details=qa_check_details),
+        ReviewCheck(
+            name="qa_or_mergeability_green", status=qa_check_status, details=qa_check_details
+        ),
         ReviewCheck(
             name="pull_request_exists",
-            status=CheckStatus.PASS if payload.get("pull_request_number", -1) > 0 else CheckStatus.FAIL,
+            status=CheckStatus.PASS
+            if payload.get("pull_request_number", -1) > 0
+            else CheckStatus.FAIL,
             details=f"pull_request_number={payload.get('pull_request_number')}",
         ),
         ReviewCheck(
             name="pull_request_open",
-            status=CheckStatus.PASS if payload.get("pull_request_state") == GitHubPullRequestState.OPEN.value else CheckStatus.FAIL,
+            status=CheckStatus.PASS
+            if payload.get("pull_request_state") == GitHubPullRequestState.OPEN.value
+            else CheckStatus.FAIL,
             details=f"pull_request_state={payload.get('pull_request_state') or 'missing'}",
         ),
         ReviewCheck(
             name="pull_request_not_draft",
-            status=CheckStatus.PASS if not payload.get("pull_request_draft", False) else CheckStatus.FAIL,
+            status=CheckStatus.PASS
+            if not payload.get("pull_request_draft", False)
+            else CheckStatus.FAIL,
             details=f"pull_request_draft={payload.get('pull_request_draft', False)}",
         ),
         ReviewCheck(
@@ -248,8 +273,10 @@ def evaluate_review(state: dict[str, Any]) -> dict[str, Any]:
 
     return state
 
+
 def _review_payload(context: PRToMergeContext) -> dict[str, Any]:
     return context.model_dump(mode="json")
+
 
 def _pipeline_context(payload: dict[str, Any]) -> dict[str, Any]:
     return {
@@ -259,6 +286,7 @@ def _pipeline_context(payload: dict[str, Any]) -> dict[str, Any]:
         "policy_public_findings": payload.get("policy_public_findings", []),
         "review_approved": payload.get("review_approved", False),
     }
+
 
 @traced(
     "review_step.llm_merge_risk_review",
@@ -333,6 +361,7 @@ def llm_merge_risk_review(state: dict[str, Any]) -> dict[str, Any]:
     state["llm_review"] = review
     return state
 
+
 @traced(
     "review_step.finalize",
     attributes=langgraph_node_attrs("review", "finalize"),
@@ -359,7 +388,11 @@ def finalize(state: dict[str, Any]) -> dict[str, Any]:
 
     # Collect data for ReviewOutput
     raw_checks = state.get("checks", [])
-    checks = [item for item in raw_checks if isinstance(item, ReviewCheck)] if isinstance(raw_checks, list) else []
+    checks = (
+        [item for item in raw_checks if isinstance(item, ReviewCheck)]
+        if isinstance(raw_checks, list)
+        else []
+    )
     required_actions = state.get("required_actions", [])
     llm_review_value = state.get("llm_review")
     llm_review: LLMMergeRiskReview | None = None

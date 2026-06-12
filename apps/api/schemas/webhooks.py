@@ -1,5 +1,6 @@
 from pydantic import BaseModel, Field
 
+
 class GitHubWebhookResponse(BaseModel):
     status: str = "accepted"
     event_type: str

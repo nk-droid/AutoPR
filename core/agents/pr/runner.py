@@ -8,6 +8,7 @@ from core.orchestrator.models import StageStatus
 
 logger = logging.getLogger(__name__)
 
+
 class PRAgent:
     def __init__(self):
         self.graph = build_pr_graph(nodes)
@@ -25,6 +26,6 @@ class PRAgent:
                 "final_output": {},
             }
         )
-        
+
         log_agent_decision(logger, "pr", result["status"])
         return result["status"], result["final_output"]
