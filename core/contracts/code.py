@@ -13,11 +13,7 @@ class CodeOutput(BaseModel):
     tests_map: Dict[str, str] = Field(..., description="Map of test file path to its content.")
 
     @model_validator(mode="after")
-    def validate_files_and_tests(cls, values):
-        files_map = values.files_map or {}
-        tests_map = values.tests_map or {}
-
-        if not files_map and not tests_map:
+    def validate_files_and_tests(self):
+        if not self.files_map and not self.tests_map:
             raise ValueError("At least one of files_map or tests_map must be provided.")
-
-        return values
+        return self
