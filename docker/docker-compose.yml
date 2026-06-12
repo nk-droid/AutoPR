@@ -27,10 +27,13 @@ services:
       AUTOPR_SERVICE_NAME: autopr-api
       AUTOPR_REDIS_URL: redis://redis:6379/0
       AUTOPR_REPOS_DIR: /app/repos
+      AUTOPR_LOG_EXPORTER: otlp
       AUTOPR_TRACE_EXPORTER: otlp
       AUTOPR_METRICS_EXPORTER: otlp
+      AUTOPR_LOG_LEVEL: INFO
       OTEL_EXPORTER_OTLP_TRACES_ENDPOINT: otel-collector:4317
       OTEL_EXPORTER_OTLP_METRICS_ENDPOINT: otel-collector:4317
+      OTEL_EXPORTER_OTLP_LOGS_ENDPOINT: otel-collector:4317
       AUTOPR_DATABASE_URL: postgresql+psycopg://postgres:postgres@postgres:5432/postgres
       AUTOPR_DATABASE_ASYNC_URL: postgresql+asyncpg://postgres:postgres@postgres:5432/postgres
 
@@ -60,10 +63,13 @@ services:
       AUTOPR_SERVICE_NAME: autopr-worker
       AUTOPR_REDIS_URL: redis://redis:6379/0
       AUTOPR_REPOS_DIR: /app/repos
+      AUTOPR_LOG_EXPORTER: otlp
       AUTOPR_TRACE_EXPORTER: otlp
       AUTOPR_METRICS_EXPORTER: otlp
+      AUTOPR_LOG_LEVEL: INFO
       OTEL_EXPORTER_OTLP_TRACES_ENDPOINT: otel-collector:4317
       OTEL_EXPORTER_OTLP_METRICS_ENDPOINT: otel-collector:4317
+      OTEL_EXPORTER_OTLP_LOGS_ENDPOINT: otel-collector:4317
       AUTOPR_DATABASE_URL: postgresql+psycopg://postgres:postgres@postgres:5432/postgres
       AUTOPR_DATABASE_ASYNC_URL: postgresql+asyncpg://postgres:postgres@postgres:5432/postgres
 
@@ -77,6 +83,20 @@ services:
         condition: service_started
       postgres:
         condition: service_healthy
+
+    restart: unless-stopped
+
+  loki:
+    image: grafana/loki:latest
+
+    command: ["-config.file=/etc/loki/loki-config.yaml"]
+
+    ports:
+      - "3100:3100"
+
+    volumes:
+      - ./loki-config.yaml:/etc/loki/loki-config.yaml
+      - loki_data:/loki
 
     restart: unless-stopped
 
@@ -99,6 +119,7 @@ services:
     depends_on:
       - tempo
       - prometheus
+      - loki
       - otel-collector
 
     restart: unless-stopped
@@ -118,6 +139,7 @@ services:
     
     depends_on:
       - tempo
+      - loki
     
     restart: unless-stopped
 
@@ -201,3 +223,4 @@ volumes:
   postgres_data:
   pgadmin_data:
   grafana-storage:
+  loki_data:

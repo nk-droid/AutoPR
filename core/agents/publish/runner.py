@@ -1,7 +1,12 @@
+import logging
 from typing import Any
+
 import core.agents.publish.nodes as nodes
 from core.agents.publish.graph import build_publish_graph
+from core.agents.runner_logging import log_agent_decision
 from core.orchestrator.models import StageStatus
+
+logger = logging.getLogger(__name__)
 
 class PublishAgent:
     def __init__(self):
@@ -30,4 +35,6 @@ class PublishAgent:
                 "final_output": {},
             }
         )
+        
+        log_agent_decision(logger, "publish", result["status"])
         return result["status"], result["final_output"]

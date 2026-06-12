@@ -1,7 +1,12 @@
+import logging
 from typing import Any
+
 import core.agents.merge.nodes as nodes
 from core.agents.merge.graph import build_merge_graph
+from core.agents.runner_logging import log_agent_decision
 from core.orchestrator.models import StageStatus
+
+logger = logging.getLogger(__name__)
 
 class MergeAgent:
     def __init__(self):
@@ -21,4 +26,6 @@ class MergeAgent:
                 "final_output": {},
             }
         )
+
+        log_agent_decision(logger, "merge", result["status"])
         return result["status"], result["final_output"]

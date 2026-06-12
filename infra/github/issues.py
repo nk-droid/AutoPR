@@ -1,3 +1,4 @@
+import logging
 from typing import Any
 from urllib.parse import urlparse
 from core.contracts.enums import (
@@ -8,6 +9,8 @@ from core.contracts.enums import (
     GitHubSortDirection,
 )
 from infra.github.client import GitHubClient
+
+logger = logging.getLogger(__name__)
 
 def get_issues(
     repo: str,
@@ -223,4 +226,15 @@ def get_and_pick_issue(
         page=page,
         token=token,
     )
-    return pick_issue(issues, strategy=strategy)
+    chosen = pick_issue(issues, strategy=strategy)
+    logger.debug(
+        "issue selected",
+        extra={
+            "event": "issue_selected",
+            "repo": repo,
+            "issue_number": chosen.get("number"),
+            "strategy": GitHubIssuePickStrategy(strategy).value,
+            "candidate_count": len(issues),
+        },
+    )
+    return chosen

@@ -1,9 +1,10 @@
 from langgraph.graph import StateGraph, END
 from typing import TypedDict, Dict, List
 
-from core.contracts.enums import PlanStatus
 from core.contracts.code import CodeOutput
 from core.contracts.plan import PlanStep
+
+from core.orchestrator.models import StageStatus
 
 class CodeState(TypedDict):
     step: PlanStep
@@ -13,7 +14,7 @@ class CodeState(TypedDict):
     qa_feedback: str
     target_files: List[str]
     files: Dict[str, str]
-    status: PlanStatus
+    status: StageStatus
     notes: dict
     final_output: CodeOutput
 

@@ -106,7 +106,11 @@ class RedisLimiter:
         try:
             return int(script(keys=[key], args=list(args)))
         except Exception:
-            logger.warning("redis rate-limit op failed; failing open", exc_info=True)
+            logger.warning(
+                "redis rate-limit op failed; failing open",
+                extra={"event": "rate_limit_failing_open", "key": key},
+                exc_info=True,
+            )
             return None
 
     def acquire(self) -> str | None:
@@ -149,7 +153,11 @@ class RedisLimiter:
         try:
             self._client.zrem(self._conc_key, token)
         except Exception:
-            logger.warning("redis rate-limit release failed for %s", self._conc_key, exc_info=True)
+            logger.warning(
+                "redis rate-limit release failed",
+                extra={"event": "rate_limit_release_failed", "key": self._conc_key},
+                exc_info=True,
+            )
 
 _redis_client = None
 _redis_lock = threading.Lock()
@@ -167,7 +175,11 @@ def _get_redis_client():
                 import redis as redis_sync
                 _redis_client = redis_sync.from_url(url, decode_responses=True)
             except Exception:
-                logger.warning("could not init redis for global rate limiting; using per-worker limits", exc_info=True)
+                logger.warning(
+                    "could not init redis for global rate limiting; using per-worker limits",
+                    extra={"event": "rate_limit_redis_init_failed"},
+                    exc_info=True,
+                )
                 _redis_client = None
     return _redis_client
 

@@ -1,7 +1,12 @@
+import logging
+
 from core.agents.plan.graph import build_plan_graph
 import core.agents.plan.nodes as nodes
-from core.contracts.enums import PlanStatus
+from core.agents.runner_logging import log_agent_decision
+from core.orchestrator.models import StageStatus
 from core.contracts.triage import TriageResult
+
+logger = logging.getLogger(__name__)
 
 class PlanAgent:
     def __init__(self):
@@ -16,8 +21,10 @@ class PlanAgent:
                 "steps": [],
                 "assumptions": [],
                 "open_questions": [],
-                "status": PlanStatus.OK,
+                "status": StageStatus.OK,
                 "final_output": {},
             }
         )
+        
+        log_agent_decision(logger, "plan", result["status"])
         return result["status"], result["final_output"]

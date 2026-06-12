@@ -1,9 +1,12 @@
 import asyncio
+import logging
 import threading
 
 from infra.llm.registry import registry
 from infra.llm.client import create_client
 from infra.llm.rate_limit import build_limiter
+
+logger = logging.getLogger(__name__)
 
 class LLMGateway:
     """Routes model calls through per-model rate limits and concurrency caps.
@@ -72,12 +75,31 @@ class LLMGateway:
         key = (provider, model)
         limiter = self.limiters.get(key)
         if limiter is None:
+            logger.warning(
+                "unknown model requested from gateway",
+                extra={"event": "llm_unknown_model", "provider": provider, "model": model},
+            )
             raise KeyError(f"Unknown model for gateway: {provider}/{model}")
 
+        logger.debug(
+            "llm request",
+            extra={"event": "llm_request", "provider": provider, "model": model},
+        )
         token = limiter.acquire()
         try:
             client = self._get_client(key)
             return client.client.invoke(prompt, config=config or {})
+        except Exception as exc:
+            logger.warning(
+                "llm call failed",
+                extra={
+                    "event": "llm_call_failed",
+                    "provider": provider,
+                    "model": model,
+                    "error": exc.__class__.__name__,
+                },
+            )
+            raise
         finally:
             limiter.release(token)
 

@@ -1,7 +1,10 @@
+import logging
 from typing import Any
 import httpx
 from core.contracts.enums import GitHubIssueSort, GitHubIssueState, GitHubSortDirection
 from infra.github.auth import resolve_github_token, resolve_optional_github_token
+
+logger = logging.getLogger(__name__)
 
 class GitHubAPIError(RuntimeError):
     """Wraps GitHub API failures with normalized request and response details."""
@@ -116,6 +119,20 @@ class GitHubClient:
             json=json,
             params=params,
         )
+        # Surface rate-limit pressure before it turns into hard failures.
+        remaining = response.headers.get("X-RateLimit-Remaining")
+        if remaining is not None and remaining.isdigit() and int(remaining) <= 10:
+            logger.warning(
+                "github rate limit low",
+                extra={
+                    "event": "github_rate_limit_low",
+                    "method": method.upper(),
+                    "path": endpoint,
+                    "remaining": int(remaining),
+                    "reset_at": response.headers.get("X-RateLimit-Reset"),
+                },
+            )
+
         try:
             response.raise_for_status()
         except httpx.HTTPStatusError as exc:
@@ -125,6 +142,15 @@ class GitHubClient:
             except Exception:
                 payload = response.text
             details = _extract_error_details(payload) or str(exc)
+            logger.warning(
+                "github api error",
+                extra={
+                    "event": "github_api_error",
+                    "method": method.upper(),
+                    "path": endpoint,
+                    "status_code": response.status_code,
+                },
+            )
             raise GitHubAPIError(
                 method=method,
                 url=url,
@@ -269,6 +295,15 @@ class GitHubClient:
         )
         if not isinstance(payload, dict):
             raise ValueError("Unexpected GitHub response while creating pull request")
+        logger.info(
+            "pull request opened",
+            extra={
+                "event": "pull_request_opened",
+                "repo": repo,
+                "pr_number": payload.get("number"),
+                "url": payload.get("html_url"),
+            },
+        )
         return payload
 
     def get_pull_request(self, repo: str, pull_number: int) -> dict:
@@ -331,6 +366,10 @@ class GitHubClient:
         )
         if not isinstance(payload, dict):
             raise ValueError("Unexpected GitHub response while commenting on pull request")
+        logger.debug(
+            "comment posted on pull request",
+            extra={"event": "pr_comment_posted", "repo": repo, "pr_number": pull_number},
+        )
         return payload
 
     def merge_pull_request(
@@ -365,6 +404,16 @@ class GitHubClient:
         )
         if not isinstance(response_payload, dict):
             raise ValueError("Unexpected GitHub response while merging pull request")
+        logger.info(
+            "pull request merged",
+            extra={
+                "event": "pull_request_merged",
+                "repo": repo,
+                "pr_number": pull_number,
+                "merge_method": merge_method,
+                "merged": response_payload.get("merged"),
+            },
+        )
         return response_payload
 
 def get_issue(repo: str, issue_number: int) -> dict:

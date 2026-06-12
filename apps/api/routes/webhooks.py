@@ -1,3 +1,4 @@
+import logging
 from functools import lru_cache
 
 from opentelemetry import trace
@@ -11,6 +12,8 @@ from core.contracts.enums import WebhookResultType
 
 from observability.tracing import traced
 from observability.metrics import WEBHOOKS_TOTAL, WEBHOOK_JOBS_ENQUEUED_TOTAL
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/webhooks", tags=["webhooks"])
 
@@ -75,6 +78,16 @@ async def github_webhook(
 
     body = await request.body()
 
+    logger.info(
+        "webhook received",
+        extra={
+            "event": "webhook_received",
+            "event_type": x_github_event,
+            "delivery_id": x_github_delivery,
+            "signature_present": x_hub_signature_256 is not None,
+        },
+    )
+
     # Parse and filter webhook payload synchronously before queuing background work.
     result = handle_github_webhook(
         event_type=x_github_event,
@@ -85,6 +98,18 @@ async def github_webhook(
 
     result_label = WebhookResultType.ACCEPTED if result.jobs else WebhookResultType.IGNORED
     WEBHOOKS_TOTAL.labels(event_type=x_github_event, result=result_label).inc()
+
+    if not result.jobs:
+        logger.info(
+            "webhook ignored",
+            extra={
+                "event": "webhook_ignored",
+                "event_type": x_github_event,
+                "delivery_id": x_github_delivery,
+                "ignored_reason": result.ignored_reason,
+                "duplicate": result.duplicate,
+            },
+        )
 
     span = trace.get_current_span()
     span.set_attribute("autopr.webhook.jobs", len(result.jobs))
@@ -103,7 +128,28 @@ async def github_webhook(
         WEBHOOKS_TOTAL.labels(event_type=x_github_event, result="queue_error").inc()
         span.record_exception(exc)
         span.set_attribute("autopr.webhook.queue_error", exc.__class__.__name__)
+        logger.error(
+            "webhook enqueue failed",
+            extra={
+                "event": "webhook_enqueue_failed",
+                "event_type": x_github_event,
+                "delivery_id": x_github_delivery,
+                "error": exc.__class__.__name__,
+            },
+        )
         raise HTTPException(status_code=503, detail="Webhook queue unavailable") from exc
+
+    if result.jobs:
+        logger.info(
+            "webhook jobs enqueued",
+            extra={
+                "event": "webhook_jobs_enqueued",
+                "event_type": x_github_event,
+                "delivery_id": x_github_delivery,
+                "job_count": len(result.jobs),
+                "run_type": result.jobs[0].run_type.value,
+            },
+        )
 
     return GitHubWebhookResponse(
         status=WebhookResultType.ACCEPTED,

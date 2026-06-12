@@ -1,3 +1,4 @@
+import logging
 from fnmatch import fnmatch
 from pathlib import Path
 from typing import Any, Mapping
@@ -7,6 +8,8 @@ from pydantic import BaseModel, Field
 
 from core.contracts.enums import PipelineStage, RiskLevel
 from core.orchestrator.models import MergeDecision, StageResult
+
+logger = logging.getLogger(__name__)
 
 class PolicyFinding(BaseModel):
     """Reviewer-facing policy finding with an optional internal reason code."""
@@ -40,9 +43,30 @@ def load_policy_config(path: Path = _POLICY_PATH) -> PolicyConfig:
     """
 
     if not path.exists():
+        logger.warning(
+            "policy config not found; using defaults",
+            extra={"event": "config_missing", "config": "policies", "path": str(path)},
+        )
         return PolicyConfig()
-    raw = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
-    return PolicyConfig.model_validate(raw)
+    try:
+        raw = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+        config = PolicyConfig.model_validate(raw)
+    except Exception as exc:
+        logger.error(
+            "policy config load failed",
+            extra={
+                "event": "config_load_failed",
+                "config": "policies",
+                "path": str(path),
+                "error": exc.__class__.__name__,
+            },
+        )
+        raise
+    logger.debug(
+        "policy config loaded",
+        extra={"event": "config_loaded", "config": "policies", "path": str(path)},
+    )
+    return config
 
 def coerce_merge_decision(value: Any) -> MergeDecision | None:
     """

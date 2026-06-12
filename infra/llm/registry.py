@@ -1,7 +1,10 @@
+import logging
 import os
 import yaml
 from pathlib import Path
 from copy import deepcopy
+
+logger = logging.getLogger(__name__)
 
 _DEFAULT_CONFIG_PATH = Path(__file__).resolve().parents[2] / "configs" / "llm_models.yaml"
 
@@ -10,8 +13,33 @@ class ModelRegistry:
 
     def __init__(self, path: str | None = None):
         resolved = path or os.getenv("LLM_MODELS_CONFIG_PATH") or str(_DEFAULT_CONFIG_PATH)
-        with open(Path(resolved)) as f:
-            self.config = yaml.safe_load(f)
+        try:
+            with open(Path(resolved)) as f:
+                self.config = yaml.safe_load(f)
+        except Exception as exc:
+            logger.error(
+                "llm model registry load failed",
+                extra={
+                    "event": "config_load_failed",
+                    "config": "llm_models",
+                    "path": resolved,
+                    "error": exc.__class__.__name__,
+                },
+            )
+            raise
+
+        providers = self.config.get("providers", {}) if isinstance(self.config, dict) else {}
+        model_count = sum(len(p.get("models", {})) for p in providers.values() if isinstance(p, dict))
+        logger.info(
+            "llm model registry loaded",
+            extra={
+                "event": "config_loaded",
+                "config": "llm_models",
+                "path": resolved,
+                "provider_count": len(providers),
+                "model_count": model_count,
+            },
+        )
 
     def get_model(self, provider: str, model_name: str) -> dict:
         """

@@ -163,6 +163,15 @@ class RedisWebhookQueue:
         message = WebhookQueueMessage.from_job(job)
         message.trace_context = inject_trace_context()
         await self._redis.lpush(self._queue_key, message.model_dump_json())
+        logger.debug(
+            "message enqueued",
+            extra={
+                "event": "message_enqueued",
+                "message_id": message.message_id,
+                "kind": message.kind,
+                "run_type": message.run_type.value,
+            },
+        )
         return message.message_id
 
     async def enqueue_resume(
@@ -198,6 +207,16 @@ class RedisWebhookQueue:
 
         message.trace_context = inject_trace_context()
         await self._redis.lpush(self._queue_key, message.model_dump_json())
+        logger.debug(
+            "resume message enqueued",
+            extra={
+                "event": "message_enqueued",
+                "message_id": message.message_id,
+                "kind": message.kind,
+                "run_type": message.run_type.value,
+                "run_id": run_id,
+            },
+        )
         return message.message_id
 
     async def reserve(self, timeout_sec: int = 5) -> tuple[WebhookQueueMessage, str] | None:
@@ -228,7 +247,18 @@ class RedisWebhookQueue:
         if raw is None:
             return None
 
-        return WebhookQueueMessage.model_validate_json(raw), raw
+        message = WebhookQueueMessage.model_validate_json(raw)
+        logger.debug(
+            "message reserved",
+            extra={
+                "event": "message_reserved",
+                "message_id": message.message_id,
+                "kind": message.kind,
+                "run_type": message.run_type.value,
+                "attempts": message.attempts,
+            },
+        )
+        return message, raw
 
     async def ack(self, raw_message: str) -> None:
         """
@@ -287,6 +317,33 @@ class RedisWebhookQueue:
             pipe.lpush(self._queue_key, next_message.model_dump_json())
 
         await pipe.execute()
+
+        if dead_lettered:
+            logger.error(
+                "message moved to dead-letter queue",
+                extra={
+                    "event": "message_dead_lettered",
+                    "message_id": next_message.message_id,
+                    "kind": next_message.kind,
+                    "run_type": next_message.run_type.value,
+                    "attempts": next_message.attempts,
+                    "last_error": next_message.last_error,
+                },
+            )
+        else:
+            logger.warning(
+                "message requeued after failure",
+                extra={
+                    "event": "message_requeued",
+                    "message_id": next_message.message_id,
+                    "kind": next_message.kind,
+                    "run_type": next_message.run_type.value,
+                    "attempts": next_message.attempts,
+                    "max_attempts": self._max_attempts,
+                    "last_error": next_message.last_error,
+                },
+            )
+
         return dead_lettered, next_message
 
     async def close(self) -> None:
@@ -325,7 +382,11 @@ def start_queue_depth_sampler(interval_sec: float = 5.0) -> threading.Thread:
                 for (state, _), depth in zip(keys.items(), pipe.execute()):
                     QUEUE_DEPTH.labels(queue=state).set(depth)
             except Exception:
-                logger.debug("queue depth sample failed", exc_info=True)
+                logger.debug(
+                    "queue depth sample failed",
+                    extra={"event": "queue_depth_sample_failed"},
+                    exc_info=True,
+                )
             time.sleep(interval_sec)
 
     thread = threading.Thread(target=_loop, name="queue-depth-sampler", daemon=True)

@@ -39,13 +39,24 @@ exporters:
     # stay visible between runs (default is 5m, which makes them disappear).
     metric_expiration: 60m
 
+  otlphttp/loki:
+    endpoint: http://loki:3100/otlp
+    tls:
+      insecure: true
+
 service:
   pipelines:
     traces:
       receivers: [otlp]
       processors: [batch]
       exporters: [otlp/tempo]
+
     metrics:
       receivers: [prometheus, otlp]
       processors: [batch]
       exporters: [prometheus]
+
+    logs:
+      receivers: [otlp]
+      processors: [batch]
+      exporters: [otlphttp/loki]

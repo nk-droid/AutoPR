@@ -191,7 +191,7 @@ def detect_ambiguity(state: dict[str, Any]) -> dict[str, Any]:
         ```
         {
             "steps": [PlanStep(...), ...],
-            "status": PlanStatus.OK,
+            "status": StageStatus.OK,
             // other state variables...
         }
         ```
@@ -257,7 +257,7 @@ def finalize(state: dict[str, Any]) -> dict[str, Any]:
             "assumptions": [...],
             "open_questions": [...],
             "steps": [PlanStep(...), ...],
-            "status": PlanStatus.OK,
+            "status": StageStatus.OK,
             // other state variables...
         }
         ```

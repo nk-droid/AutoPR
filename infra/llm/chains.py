@@ -1,3 +1,4 @@
+import logging
 from typing import Any, TypeVar
 
 from pydantic import BaseModel
@@ -9,6 +10,8 @@ from infra.llm.callbacks import LLMMetricsCallbackHandler
 from infra.llm.gateway import gateway
 from observability.tracing import traced, llm_chain_attrs
 from observability.metrics import LLM_PARSE_ERRORS_TOTAL
+
+logger = logging.getLogger(__name__)
 
 ModelT = TypeVar("ModelT", bound=BaseModel)
 
@@ -73,7 +76,7 @@ def invoke_chain(
         if isinstance(parsed, output_model):
             return parsed
         return output_model.model_validate(parsed)
-    except Exception:
+    except Exception as exc:
         LLM_PARSE_ERRORS_TOTAL.add(
             1,
             {
@@ -82,6 +85,18 @@ def invoke_chain(
                 "agent": agent,
                 "node": node,
                 "output_model": output_model.__name__,
+            },
+        )
+        logger.warning(
+            "llm output parse error",
+            extra={
+                "event": "llm_parse_error",
+                "provider": client.provider,
+                "model": client.model,
+                "agent": agent,
+                "node": node,
+                "output_model": output_model.__name__,
+                "error": exc.__class__.__name__,
             },
         )
         raise

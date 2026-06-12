@@ -1,10 +1,14 @@
+import logging
 import shutil
 import tempfile
+import time
 from pathlib import Path
 from typing import Callable
 
 from core.contracts.enums import CheckStatus
 from core.contracts.run_context import QAJobPayload, ToolRunResult
+
+logger = logging.getLogger(__name__)
 
 from infra.qa.coverage_runner import CoverageRunner
 from infra.qa.lint_runner import LintRunner
@@ -135,6 +139,10 @@ def _execute_job(
     status_resolver: Callable[[object], CheckStatus],
 ) -> ToolRunResult:
     if not targets:
+        logger.debug(
+            "qa tool skipped",
+            extra={"event": "qa_tool_skipped", "tool": name, "reason": empty_reason},
+        )
         return _result(
             name,
             CheckStatus.WARN,
@@ -155,10 +163,35 @@ def _execute_job(
             payload=result.model_dump(mode="json"),
         )
 
+    logger.info(
+        f"qa[{name}] started",
+        extra={"event": "qa_tool_started", "tool": name, "target_count": len(targets)},
+    )
+    started_at = time.perf_counter()
     try:
-        return _run_in_sandbox(qa_payload, _run)
+        tool_result = _run_in_sandbox(qa_payload, _run)
+        status_label = tool_result.status.value if hasattr(tool_result.status, "value") else str(tool_result.status)
+        logger.info(
+            f"qa[{name}] finished -> {status_label}",
+            extra={
+                "event": "qa_tool_finished",
+                "tool": name,
+                "status": status_label,
+                "duration_ms": round((time.perf_counter() - started_at) * 1000, 1),
+            },
+        )
+        return tool_result
 
     except Exception as exc:
+        logger.warning(
+            f"qa[{name}] failed",
+            extra={
+                "event": "qa_tool_failed",
+                "tool": name,
+                "duration_ms": round((time.perf_counter() - started_at) * 1000, 1),
+                "error": exc.__class__.__name__,
+            },
+        )
         return _result(
             name,
             CheckStatus.FAIL,

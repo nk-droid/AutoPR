@@ -9,14 +9,16 @@ datasources:
     isDefault: true
     editable: true
     jsonData:
-      # Tempo's :3200 only serves HTTP; disable gRPC streaming search so Grafana
-      # uses the HTTP /api/search endpoint instead of failing on a gRPC dial.
       streamingEnabled:
         search: false
       serviceMap:
         datasourceUid: prometheus
       tracesToMetrics:
         datasourceUid: prometheus
+      tracesToLogsV2:
+        datasourceUid: loki
+        filterByTraceID: true
+        filterBySpanID: false
 
   - name: Prometheus
     type: prometheus
@@ -28,3 +30,10 @@ datasources:
       exemplarTraceIdDestinations:
         - name: trace_id
           datasourceUid: tempo
+
+  - name: Loki
+    type: loki
+    access: proxy
+    url: http://loki:3100
+    uid: loki
+    editable: true

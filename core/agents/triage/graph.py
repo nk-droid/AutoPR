@@ -1,17 +1,17 @@
 from langgraph.graph import StateGraph, END
 from typing import TypedDict, Any
 
-from core.contracts.enums import AmbiguityStatus
 from core.contracts.run_context import TriageIssueInput
-from core.contracts.triage import TaskSpec, Risk, AmbiguityResult, TriageResult
+from core.contracts.triage import TaskSpec, Risk, AmbiguityResult
 from core.agents.plan.graph import PARSER_RETRY_POLICY
+from core.orchestrator.models import StageStatus
 
 class TriageState(TypedDict):
     issue: TriageIssueInput
     task_spec: TaskSpec
     risk: Risk
     ambiguity: AmbiguityResult
-    status: AmbiguityStatus
+    status: StageStatus
     final_output: dict[str, Any]
 
 # Extract task -> Assess risk -> Detect ambiguity -> Finalize

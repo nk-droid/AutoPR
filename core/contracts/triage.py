@@ -1,6 +1,7 @@
 from pydantic import BaseModel, Field
 from typing import List
-from core.contracts.enums import AmbiguityStatus, RiskLevel
+from core.contracts.enums import RiskLevel
+from core.orchestrator.models import StageStatus
 
 class TaskSpec(BaseModel):
     problem: str = Field(..., description="A clear and concise description of the problem to be solved.")
@@ -13,7 +14,7 @@ class Risk(BaseModel):
     reasons: List[str] = Field(..., description="List of reasons for the assigned risk level.")
 
 class AmbiguityResult(BaseModel):
-    status: AmbiguityStatus = Field(..., description="Indicates whether the task specification is clear (ok) or if it requires human intervention due to ambiguities.")
+    status: StageStatus = Field(..., description="Indicates whether the task specification is clear (ok) or if it requires human intervention due to ambiguities.")
     questions: List[str] = Field(default_factory=list, description="List of questions that highlight potential ambiguities in the task specification.")
 
 class TriageResult(BaseModel):

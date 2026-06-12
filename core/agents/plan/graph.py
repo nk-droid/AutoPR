@@ -2,11 +2,12 @@ import json
 from typing import Any, TypedDict
 from langgraph.graph import END, StateGraph
 from langgraph.types import RetryPolicy
-from core.contracts.enums import PlanStatus
-from core.contracts.plan import PlanStep
-from core.contracts.triage import TriageResult
 from pydantic import ValidationError
 from langchain_core.exceptions import OutputParserException
+
+from core.contracts.plan import PlanStep
+from core.contracts.triage import TriageResult
+from core.orchestrator.models import StageStatus
 
 class PlanState(TypedDict):
     triage_result: TriageResult
@@ -15,7 +16,7 @@ class PlanState(TypedDict):
     steps: list[PlanStep]
     assumptions: list[str]
     open_questions: list[str]
-    status: PlanStatus
+    status: StageStatus
     final_output: dict[str, Any]
 
 def is_output_parse_error(exc: Exception) -> bool:

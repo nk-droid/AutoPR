@@ -1,7 +1,12 @@
+import logging
+
 from core.agents.code.graph import build_code_graph
 import core.agents.code.nodes as nodes
-from core.contracts.enums import PlanStatus
+from core.agents.runner_logging import log_agent_decision
+from core.orchestrator.models import StageStatus
 from core.contracts.plan import PlanStep
+
+logger = logging.getLogger(__name__)
 
 class CodeAgent:
     def __init__(self):
@@ -23,9 +28,10 @@ class CodeAgent:
             "qa_feedback": qa_feedback,
             "target_files": [],
             "files": {},
-            "status": PlanStatus.OK,
+            "status": StageStatus.OK,
             "notes": {},
             "final_output": None
         })
 
+        log_agent_decision(logger, "code", result["status"], step_id=getattr(step, "id", None))
         return result["status"], result["final_output"]

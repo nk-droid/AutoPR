@@ -1,4 +1,8 @@
 import asyncio
+import logging
+
+from dotenv import load_dotenv
+load_dotenv()
 
 from opentelemetry.trace import SpanKind
 
@@ -8,6 +12,7 @@ from infra.redis.webhook_queue import RedisWebhookQueue, WebhookQueueMessage
 from infra.slack.notification import send_dead_letter_notification
 from infra.storage.dead_letter import record_dead_letter_job
 
+from observability.logging import setup_logging
 from observability.tracing import (
     attach_trace_context,
     configure_tracing,
@@ -16,13 +21,21 @@ from observability.tracing import (
 )
 from observability.metrics import QUEUE_MESSAGES_TOTAL, start_worker_metrics_server
 
-import dotenv
-dotenv.load_dotenv()
+setup_logging(service_name="autopr-worker")
+configure_tracing(service_name="autopr-worker")
 
-import logging
 logger = logging.getLogger("autopr.worker")
 
-configure_tracing(service_name="autopr-worker")
+import os
+logger.info(
+    "service starting",
+    extra={
+        "event": "service_starting",
+        "service": "autopr-worker",
+        "env": os.getenv("AUTOPR_ENV", "local"),
+        "log_exporter": os.getenv("AUTOPR_LOG_EXPORTER", "otlp"),
+    },
+)
 
 def _extract_repository(message: WebhookQueueMessage) -> str:
     """
@@ -68,7 +81,16 @@ def _handle_dead_letter(message: WebhookQueueMessage) -> None:
             payload=payload if isinstance(payload, dict) else {},
         )
     except Exception:
-        logger.exception("failed to persist dead-letter message_id=%s", message.message_id)
+        logger.exception(
+            "failed to persist dead-letter",
+            extra={
+                "event": "dead_letter_persist_failed",
+                "message_id": message.message_id,
+                "kind": message.kind,
+                "run_type": message.run_type.value,
+                "repo": repository,
+            },
+        )
 
     # Send a notification about the dead-lettered message
     try:
@@ -81,7 +103,16 @@ def _handle_dead_letter(message: WebhookQueueMessage) -> None:
             last_error=message.last_error,
         )
     except Exception:
-        logger.exception("failed to notify dead-letter message_id=%s", message.message_id)
+        logger.exception(
+            "failed to notify dead-letter",
+            extra={
+                "event": "dead_letter_notify_failed",
+                "message_id": message.message_id,
+                "kind": message.kind,
+                "run_type": message.run_type.value,
+                "repo": repository,
+            },
+        )
 
     QUEUE_MESSAGES_TOTAL.labels(
         action="dead_letter",
@@ -98,6 +129,8 @@ async def run() -> None:
     # Initialize Ray runtime for distributed processing.
     ensure_ray_initialized()
 
+    logger.info("worker started", extra={"event": "worker_started"})
+
     # Create a connection to the webhook queue and continuously process messages until shutdown.
     queue = RedisWebhookQueue.from_env()
     try:
@@ -110,6 +143,17 @@ async def run() -> None:
             message, raw = reserved
             token = attach_trace_context(message.trace_context)
             try:
+                logger.info(
+                    "processing message",
+                    extra={
+                        "event": "message_processing",
+                        "message_id": message.message_id,
+                        "kind": message.kind,
+                        "run_type": message.run_type.value,
+                        "attempts": message.attempts,
+                    },
+                )
+
                 with get_tracer().start_as_current_span(
                     "worker.process_job", kind=SpanKind.CONSUMER
                 ) as span:
@@ -125,11 +169,14 @@ async def run() -> None:
                 await queue.ack(raw)
 
                 logger.info(
-                    "processed message_id=%s run_id=%s run_type=%s state=%s",
-                    message.message_id,
-                    result.run_id,
-                    result.run_type,
-                    result.state,
+                    "message processed",
+                    extra={
+                        "event": "message_processed",
+                        "message_id": message.message_id,
+                        "run_id": result.run_id,
+                        "run_type": result.run_type,
+                        "state": result.state,
+                    },
                 )
 
                 QUEUE_MESSAGES_TOTAL.labels(
@@ -141,7 +188,18 @@ async def run() -> None:
                 # If processing fails, move the message to the dead-letter queue and record the failure.
                 dead_lettered, failed_message = await queue.fail(message, raw, str(exc))
 
-                logger.exception("failed message_id=%s", message.message_id)
+                logger.exception(
+                    "message processing failed",
+                    extra={
+                        "event": "message_processing_failed",
+                        "message_id": message.message_id,
+                        "kind": message.kind,
+                        "run_type": message.run_type.value,
+                        "attempts": failed_message.attempts,
+                        "dead_lettered": dead_lettered,
+                        "error": exc.__class__.__name__,
+                    },
+                )
                 QUEUE_MESSAGES_TOTAL.labels(
                     action="failed",
                     run_type=message.run_type.value,
@@ -154,6 +212,7 @@ async def run() -> None:
             finally:
                 detach_trace_context(token)
     finally:
+        logger.info("worker shutting down", extra={"event": "worker_shutdown"})
         await queue.close()
 
 

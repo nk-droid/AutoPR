@@ -1,3 +1,4 @@
+import logging
 from datetime import datetime, timezone
 from typing import Any
 from sqlalchemy import select
@@ -6,6 +7,8 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from infra.storage.engine import get_engine
 from infra.storage.schema import artifacts, runs, run_events
 from infra.storage.models import StoredRunEvent, StoredArtifact, StoredRun
+
+logger = logging.getLogger(__name__)
 
 def upsert_run(
     *,
@@ -44,8 +47,21 @@ def upsert_run(
         }
     )
     # engine.begin() automatically commits transaction upon completion
-    with engine.begin() as conn:
-        conn.execute(stmt)
+    try:
+        with engine.begin() as conn:
+            conn.execute(stmt)
+    except Exception as exc:
+        logger.error(
+            "run snapshot persist failed",
+            extra={
+                "event": "storage_write_failed",
+                "operation": "upsert_run",
+                "run_id": run_id,
+                "state": state,
+                "error": exc.__class__.__name__,
+            },
+        )
+        raise
 
 def record_run_event(run_id: str, event_type: str, payload: dict[str, Any]) -> None:
     """
@@ -64,8 +80,21 @@ def record_run_event(run_id: str, event_type: str, payload: dict[str, Any]) -> N
         payload=payload,
         created_at=datetime.now(timezone.utc),
     )
-    with engine.begin() as conn:
-        conn.execute(query)
+    try:
+        with engine.begin() as conn:
+            conn.execute(query)
+    except Exception as exc:
+        logger.error(
+            "run event persist failed",
+            extra={
+                "event": "storage_write_failed",
+                "operation": "record_run_event",
+                "run_id": run_id,
+                "run_event_type": event_type,
+                "error": exc.__class__.__name__,
+            },
+        )
+        raise
 
 def save_artifact(run_id: str, key: str, value: dict) -> dict:
     """
@@ -95,8 +124,21 @@ def save_artifact(run_id: str, key: str, value: dict) -> dict:
             'updated_at': stmt.excluded.updated_at,
         }
     )
-    with engine.begin() as conn:
-        conn.execute(stmt)
+    try:
+        with engine.begin() as conn:
+            conn.execute(stmt)
+    except Exception as exc:
+        logger.error(
+            "artifact persist failed",
+            extra={
+                "event": "storage_write_failed",
+                "operation": "save_artifact",
+                "run_id": run_id,
+                "artifact_key": key,
+                "error": exc.__class__.__name__,
+            },
+        )
+        raise
 
     return {"run_id": run_id, "key": key, "saved": True}
 

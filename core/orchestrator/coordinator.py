@@ -1,3 +1,4 @@
+import logging
 import os
 import ray
 import time
@@ -20,6 +21,8 @@ from observability.tracing import get_tracer, inject_trace_context
 import dotenv
 dotenv.load_dotenv()
 
+logger = logging.getLogger(__name__)
+
 class Coordinator:
     def __init__(self, run: RunModel | None = None) -> None:
         self.run = run or RunModel(state=RunState.RECEIVED.value)
@@ -30,6 +33,17 @@ class Coordinator:
 
         # Record the run before any stage can mutate pipeline state.
         self._persist_run(event_type="run_initialized", payload={"state": self.run.state})
+
+        run_type_label = self.run.run_type.value if hasattr(self.run.run_type, "value") else str(self.run.run_type)
+        logger.info(
+            f"run initialized [{run_type_label}]",
+            extra={
+                "event": "run_initialized",
+                "run_id": str(self.run.run_id),
+                "run_type": run_type_label,
+                "state": self.run.state,
+            },
+        )
 
     def _persist_run(self, *, event_type: str | None = None, payload: dict[str, Any] | None = None) -> None:
         """
@@ -91,6 +105,7 @@ class Coordinator:
         """
 
         # Always compute the next state from the state machine rather than trusting the caller.
+        from_state = self.state_machine.state
         state = self.state_machine.transition(next_state, reason=reason, metadata=metadata)
         self.run.state = state
         self.run.transition_history = list(self.state_machine.history)
@@ -100,6 +115,17 @@ class Coordinator:
                 "state": state,
                 "reason": reason,
                 "metadata": metadata or {},
+            },
+        )
+        logger.info(
+            f"state transition {from_state} -> {state}",
+            extra={
+                "event": "state_transition",
+                "run_id": str(self.run.run_id),
+                "run_type": self.run.run_type.value if hasattr(self.run.run_type, "value") else str(self.run.run_type),
+                "from_state": from_state,
+                "to_state": state,
+                "reason": reason,
             },
         )
         return state
@@ -126,6 +152,16 @@ class Coordinator:
         self._persist_run(
             event_type="run_blocked",
             payload={"reason": reason, "metadata": metadata or {}},
+        )
+        logger.warning(
+            f"run blocked: {reason}",
+            extra={
+                "event": "run_blocked",
+                "run_id": str(self.run.run_id),
+                "run_type": self.run.run_type.value if hasattr(self.run.run_type, "value") else str(self.run.run_type),
+                "reason": reason,
+                "stage": str((metadata or {}).get("stage", "")),
+            },
         )
         return state
 
@@ -414,6 +450,16 @@ class Coordinator:
         while step_index < len(steps):
             loop_count += 1
             if loop_count > max_autonomous_loops:
+                logger.warning(
+                    "autonomous loop limit reached",
+                    extra={
+                        "event": "autonomous_loop_limit_reached",
+                        "run_id": str(self.run.run_id),
+                        "loops": loop_count,
+                        "max_autonomous_loops": max_autonomous_loops,
+                        "stage_index": step_index,
+                    },
+                )
                 self._block_run(
                     reason="max_autonomous_loops_reached",
                     metadata={
@@ -426,17 +472,49 @@ class Coordinator:
 
             # Let each step declare its own pre-flight checks and transitions
             step = steps[step_index]
+            stage_label = step.stage.value if hasattr(step.stage, "value") else str(step.stage)
             for next_state, reason in step.before(context, self.run):
                 self.transition_to(next_state, reason=reason)
 
+            logger.info(
+                f"stage[{stage_label}] started",
+                extra={
+                    "event": "stage_started",
+                    "run_id": str(self.run.run_id),
+                    "run_type": self.run.run_type.value if hasattr(self.run.run_type, "value") else str(self.run.run_type),
+                    "stage": stage_label,
+                    "stage_index": step_index,
+                },
+            )
+
             started_at = time.perf_counter()
             result = step.execute(context, self.run, self)
+            duration_sec = time.perf_counter() - started_at
             observe_stage(
                 self.run.run_type,
                 step.stage,
                 result.status,
-                time.perf_counter() - started_at,
+                duration_sec,
             )
+
+            status_label = result.status.value if hasattr(result.status, "value") else str(result.status)
+            stage_log = {
+                "event": "stage_finished",
+                "run_id": str(self.run.run_id),
+                "run_type": self.run.run_type.value if hasattr(self.run.run_type, "value") else str(self.run.run_type),
+                "stage": stage_label,
+                "stage_index": step_index,
+                "status": status_label,
+                "duration_ms": round(duration_sec * 1000, 1),
+            }
+            if is_success_status(result.status):
+                logger.info(f"stage[{stage_label}] finished -> {status_label}", extra=stage_log)
+            else:
+                required_actions = result.notes.get("required_actions") if isinstance(result.notes, dict) else None
+                logger.warning(
+                    f"stage[{stage_label}] did not pass -> {status_label}",
+                    extra={**stage_log, "required_actions": required_actions},
+                )
 
             # Persist result and update context
             result = self.add_stage_result(result)
@@ -530,9 +608,21 @@ class Coordinator:
                 "autopr.issue_number": context.issue_number,
             }
         ) as span:
+            started_at = time.perf_counter()
             final_run = self._run_steps(context.model_dump(mode="json"))
             span.set_attribute("autopr.final_state", final_run.state)
             observe_run(final_run.run_type, final_run.state)
+            logger.info(
+                f"run completed -> {final_run.state}",
+                extra={
+                    "event": "run_completed",
+                    "run_id": str(final_run.run_id),
+                    "run_type": final_run.run_type.value,
+                    "repo": context.repository,
+                    "final_state": final_run.state,
+                    "duration_ms": round((time.perf_counter() - started_at) * 1000, 1),
+                },
+            )
             return final_run
 
     def run_pr_to_merge(self, context: PRToMergeContext) -> RunModel:
@@ -557,9 +647,21 @@ class Coordinator:
                 "autopr.pull_request_number": context.pull_request_number,
             }
         ) as span:
+            started_at = time.perf_counter()
             final_run = self._run_steps(context.model_dump(mode="json"))
             span.set_attribute("autopr.final_state", final_run.state)
             observe_run(final_run.run_type, final_run.state)
+            logger.info(
+                f"run completed -> {final_run.state}",
+                extra={
+                    "event": "run_completed",
+                    "run_id": str(final_run.run_id),
+                    "run_type": final_run.run_type.value,
+                    "repo": context.repository,
+                    "final_state": final_run.state,
+                    "duration_ms": round((time.perf_counter() - started_at) * 1000, 1),
+                },
+            )
             return final_run
 
 if __name__ == "__main__":

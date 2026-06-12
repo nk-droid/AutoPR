@@ -1,6 +1,7 @@
 import hashlib
 import hmac
 import json
+import logging
 import os
 import re
 from typing import Any, Union
@@ -11,6 +12,8 @@ from core.orchestrator.coordinator import Coordinator
 from core.orchestrator.models import IssueActions, RunModel, RunType
 from core.orchestrator.resume import resume_after_approval
 from infra.github.models import GitHubRepo, GitHubWebhookEventMetadata, IssuePayload, IssueToPRContext, PRReviewPayload, PRToMergeContext, WebhookDispatchResult, WebhookHandleResult
+
+logger = logging.getLogger(__name__)
 
 ISSUE_RUN_COMMAND = re.compile(r"(?im)^/autopr\s+run\b")
 PR_MERGE_COMMAND = re.compile(r"(?im)^/autopr\s+merge\b")
@@ -28,15 +31,27 @@ def _verify_signature(body: bytes, signature_256: str | None) -> None:
         return
 
     if not signature_256:
+        logger.warning(
+            "webhook signature missing",
+            extra={"event": "webhook_signature_invalid", "reason": "missing_header"},
+        )
         raise PermissionError("Missing X-Hub-Signature-256 header")
 
     prefix = "sha256="
     if not signature_256.startswith(prefix):
+        logger.warning(
+            "webhook signature malformed",
+            extra={"event": "webhook_signature_invalid", "reason": "bad_format"},
+        )
         raise PermissionError("Invalid X-Hub-Signature-256 format")
 
     digest = hmac.new(secret.encode("utf-8"), body, hashlib.sha256).hexdigest()
     expected = f"{prefix}{digest}"
     if not hmac.compare_digest(signature_256, expected):
+        logger.warning(
+            "webhook signature verification failed",
+            extra={"event": "webhook_signature_invalid", "reason": "mismatch"},
+        )
         raise PermissionError("Webhook signature verification failed")
 
 def _base_metadata(event_type: GitHubWebhookEventType, delivery_id: str, action: str) -> GitHubWebhookEventMetadata:
@@ -289,6 +304,17 @@ def dispatch_webhook_job(job: Union[IssueToPRContext, PRToMergeContext]) -> Webh
     )
 
     coordinator = Coordinator(run)
+    logger.info(
+        "dispatching webhook job",
+        extra={
+            "event": "job_dispatch_started",
+            "run_id": str(run.run_id),
+            "run_type": job.run_type.value,
+            "repo": repository,
+            "issue_number": issue_number,
+            "pr_number": pull_request_number,
+        },
+    )
     if job.run_type == RunType.ISSUE_TO_PR:
         issue_job = job
         final_run = coordinator.run_issue_to_pr(
@@ -313,6 +339,17 @@ def dispatch_webhook_job(job: Union[IssueToPRContext, PRToMergeContext]) -> Webh
             )
         )
 
+    logger.info(
+        "webhook job dispatched",
+        extra={
+            "event": "job_dispatch_finished",
+            "run_id": str(final_run.run_id),
+            "run_type": job.run_type.value,
+            "repo": repository,
+            "state": final_run.state,
+        },
+    )
+
     return WebhookDispatchResult(
         accepted=True,
         run_id=str(final_run.run_id),
@@ -331,11 +368,32 @@ def dispatch_resume_job(resume_payload: dict[str, Any]) -> WebhookDispatchResult
         Dispatch result containing the resumed run id, state, and run type.
     """
 
+    run_id = str(resume_payload.get("run_id", ""))
+    logger.info(
+        "dispatching resume job",
+        extra={
+            "event": "resume_dispatch_started",
+            "run_id": run_id,
+            "request_id": str(resume_payload.get("request_id", "")),
+            "stage_index": int(resume_payload.get("stage_index", 0)),
+        },
+    )
+
     final_run = resume_after_approval(
         request_id=str(resume_payload.get("request_id", "")),
-        run_id=str(resume_payload.get("run_id", "")),
+        run_id=run_id,
         stage_index=int(resume_payload.get("stage_index", 0)),
         context=dict(resume_payload.get("context", {})),
+    )
+
+    logger.info(
+        "resume job dispatched",
+        extra={
+            "event": "resume_dispatch_finished",
+            "run_id": str(final_run.run_id),
+            "run_type": final_run.run_type.value,
+            "state": final_run.state,
+        },
     )
 
     return WebhookDispatchResult(

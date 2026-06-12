@@ -17,19 +17,41 @@ class Sandbox:
         self.workspace: Path | None = None
 
     def __enter__(self) -> "Sandbox":
-        root = Path(tempfile.mkdtemp(prefix="autopr_qa_", dir=str(get_work_base())))
-        target = root / self.repo_path.name
-        # Execute tools against an isolated copy to avoid mutating caller workspace.
-        shutil.copytree(self.repo_path, target, dirs_exist_ok=True)
+        try:
+            root = Path(tempfile.mkdtemp(prefix="autopr_qa_", dir=str(get_work_base())))
+            target = root / self.repo_path.name
+            # Execute tools against an isolated copy to avoid mutating caller workspace.
+            shutil.copytree(self.repo_path, target, dirs_exist_ok=True)
+        except Exception as exc:
+            logger.error(
+                "qa sandbox setup failed",
+                extra={
+                    "event": "qa_sandbox_setup_failed",
+                    "repo_path": str(self.repo_path),
+                    "error": exc.__class__.__name__,
+                },
+            )
+            raise
         self.workspace = target
+        logger.debug(
+            "qa sandbox created",
+            extra={"event": "qa_sandbox_created", "workspace": str(target)},
+        )
         return self
 
     def __exit__(self, exc_type, exc_val, exc_tb) -> None:
         if self.workspace and self.workspace.exists():
             if keep_qa_workspace():
-                logger.info(f"[qa] retained sandbox: {self.workspace}")
+                logger.info(
+                    "qa sandbox retained",
+                    extra={"event": "qa_sandbox_retained", "workspace": str(self.workspace)},
+                )
             else:
                 shutil.rmtree(self.workspace.parent, ignore_errors=True)
+                logger.debug(
+                    "qa sandbox cleaned",
+                    extra={"event": "qa_sandbox_cleaned", "workspace": str(self.workspace)},
+                )
                 self.workspace = None
 
     def run(self, command: list[str], timeout: int = 300) -> CommandResult:

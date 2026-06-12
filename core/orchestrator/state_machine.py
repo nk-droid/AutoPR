@@ -1,6 +1,9 @@
+import logging
 from typing import Any
 from core.orchestrator.models import RunType, TransitionEvent
 from core.orchestrator.transitions import can_transition
+
+logger = logging.getLogger(__name__)
 
 class InvalidStateTransitionError(ValueError):
     """Raised when a run tries to move outside its workflow graph."""
@@ -52,6 +55,15 @@ class StateMachine:
 
         # Guard invalid jumps unless a caller explicitly disables validation.
         if validate and not can_transition(self.state, next_state, self.run_type):
+            logger.warning(
+                "invalid state transition rejected",
+                extra={
+                    "event": "invalid_transition",
+                    "run_type": self.run_type.value,
+                    "from_state": self.state,
+                    "attempted_state": next_state,
+                },
+            )
             raise InvalidStateTransitionError(
                 f"Invalid transition for {self.run_type.value}: {self.state} -> {next_state}"
             )
