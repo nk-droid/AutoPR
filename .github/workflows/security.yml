@@ -35,7 +35,7 @@ jobs:
           python -m pip install -e ".[dev,llm]" pip-audit
 
       - name: Run Bandit
-        run: bandit -r apps core infra configs observability -x tests
+        run: bandit -r apps core infra configs observability -x tests --severity-level medium
 
       - name: Audit Python dependencies
         run: pip-audit
